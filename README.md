@@ -150,7 +150,7 @@ src/
   platform/   settings persistence and Tauri bindings
 src-tauri/
   src/        tray menu, click-through and cursor polling, lock/unlock watcher
-docs/         design brief, implementation plan, screenshots
+docs/         design brief, screenshots
 ```
 
 The Flat style's design rules are in [DESIGN.md](DESIGN.md), and the product notes are in [PRODUCT.md](PRODUCT.md).
