@@ -9,6 +9,8 @@ import { Renderer } from './art/renderer';
 import { normalizeStyle } from './art/style';
 import type { Style } from './art/style';
 import { Balloon } from './ui/balloon';
+import { ContextMenu } from './ui/contextMenu';
+import { buildMenu } from './ui/menuModel';
 
 /** ?sandbox[&style=flat][&compare]  -  compare shows Classic and Flat side by side. */
 export function runSandbox(): void {
@@ -21,6 +23,7 @@ export function runSandbox(): void {
   stage.style.outline = '1px dashed rgba(255,255,255,.5)';
   const renderers: Renderer[] = [new Renderer(document.getElementById('character') as HTMLElement, compare ? 'classic' : style)];
   const balloons: Balloon[] = [];
+  const menuEls: HTMLElement[] = [document.getElementById('menu') as HTMLElement];
   if (compare) {
     const wrap = document.createElement('div');
     wrap.dataset.style = 'flat';
@@ -31,6 +34,7 @@ export function runSandbox(): void {
     s2.style.outline = '1px dashed rgba(255,255,255,.5)';
     renderers.push(new Renderer(s2.querySelector('#character') as HTMLElement, 'flat', wrap));
     balloons.push(new Balloon(s2.querySelector('#balloon') as HTMLElement, () => undefined));
+    menuEls.push(s2.querySelector('#menu') as HTMLElement);
   }
   const animator = new Animator({ render: (p) => renderers.forEach((r) => r.render(p)) });
   animator.setPose(NEUTRAL);
@@ -89,7 +93,7 @@ export function runSandbox(): void {
   panel.append(log);
 
   // ?sandbox&compare&shot=<scene>: static, chrome-free scenes for README screenshots
-  // (see scripts/screenshots.sh). Scenes: quote | water | sleep | jump | dizzy | sweat | tired | dance | yawn.
+  // (see scripts/screenshots.sh). Scenes: quote | water | sleep | jump | dizzy | sweat | tired | dance | yawn | stretch | stretch2 | stretch3 | celebrate | focus | focus-balloon | menu | menu-wellbeing | menu-water | menu-stretch | menu-focus.
   const shot = q.get('shot');
   if (shot) {
     panel.style.display = 'none';
@@ -98,6 +102,22 @@ export function runSandbox(): void {
     document.body.style.background = bg;
     document.querySelectorAll<HTMLElement>('#stage').forEach((s) => { s.style.outline = 'none'; });
     const frame = (n: AnimName, i: number) => mergePose(NEUTRAL, ANIMATIONS[n].frames[i].pose ?? {});
+    // Real menu, real data: scenes menu | menu-wellbeing | menu-water | menu-focus (open the nested panels by clicking).
+    const showMenu = (path: string[], focusLeft: number | null = null) => {
+      for (const el of menuEls) {
+        const menu = new ContextMenu(el, () => undefined, () => undefined);
+        menu.open(70, 4, buildMenu({
+          sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, style: el === menuEls[0] && !compare ? style : el === menuEls[0] ? 'classic' : 'flat',
+          water: { enabled: true, intervalMin: 45, glassesToday: 3 }, stretch: { enabled: true, everyMin: 60 },
+          focusLeft, calendarSupported: true, meetingHeadsUp: true,
+        }));
+        for (const id of path) {
+          const row = [...el.parentElement!.querySelectorAll<HTMLElement>('.item')].filter((r) => r.offsetParent !== null).find((r) => r.dataset.id === id);
+          row?.scrollIntoView({ block: 'nearest' });
+          row?.click();
+        }
+      }
+    };
     if (shot === 'water') {
       const actions = [{ id: 'drank', label: 'Drank some' }, { id: 'later', label: 'Later' }];
       balloons.forEach((b) => void b.speak('Hydration check! Your brain is mostly water. Top it up?', undefined, actions));
@@ -108,6 +128,30 @@ export function runSandbox(): void {
       animator.setPose(frame('Jump', 2));
     } else if (shot === 'dizzy') {
       animator.setPose(frame('Dizzy', 0));
+    } else if (shot === 'menu') {
+      showMenu([]);
+    } else if (shot === 'menu-wellbeing') {
+      showMenu(['wellbeing']);
+    } else if (shot === 'menu-water') {
+      showMenu(['wellbeing', 'water']);
+    } else if (shot === 'menu-stretch') {
+      showMenu(['wellbeing', 'stretch']);
+    } else if (shot === 'menu-focus') {
+      showMenu(['wellbeing', 'focus'], 18);
+    } else if (shot === 'stretch') { // scenes stretch1..3 pick a mid-pose of each guided animation
+      animator.setPose(frame('StretchReach', 2));
+    } else if (shot === 'stretch2') {
+      animator.setPose(frame('StretchSide', 2));
+    } else if (shot === 'stretch3') {
+      animator.setPose(frame('StretchFold', 2));
+    } else if (shot === 'celebrate') {
+      animator.setPose(frame('Celebrate', 3));
+    } else if (shot === 'focus') {
+      renderers.forEach((r) => r.setFocus('24'));
+    } else if (shot === 'focus-balloon') {
+      renderers.forEach((r) => r.setFocus('1'));
+      animator.setPose(frame('Celebrate', 1));
+      speakAll('Time! You did it. That was a proper focus round.');
     } else if (shot === 'sweat' || shot === 'tired' || shot === 'dance' || shot === 'yawn') {
       // presence reactions: a representative mid-animation frame
       const at = { sweat: 2, tired: 1, dance: 1, yawn: 1 }[shot];

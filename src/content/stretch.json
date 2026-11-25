@@ -1,0 +1,22 @@
+[
+  { "kind": "stretch", "text": "It looks like you've been at it a while. Time for a stretch on my mat?" },
+  { "kind": "stretch", "text": "It looks like you're turning into a paperclip. Let's unbend a little!" },
+  { "kind": "stretch", "text": "Hour check! Your spine called. It wants a word." },
+  { "kind": "stretch", "text": "It looks like you're hunching. Care to stretch with me?" },
+  { "kind": "stretch", "text": "Psst. Shoulders up by your ears again. Stretch break?" },
+  { "kind": "stretch", "text": "It looks like you've been sitting for ages. Yoga mat's free!" },
+  { "kind": "stretch", "text": "My wire needs unbending, and so does your back. Join me?" },
+  { "kind": "stretch", "text": "Long session! Even paperclips need to flex now and then." },
+  { "kind": "stretch", "text": "It looks like you're stuck in one position. Shall we reach for the sky?" },
+  { "kind": "stretch", "text": "Stretch o'clock! Two minutes, zero equipment. Well, one mat." },
+  { "kind": "stretch", "text": "It looks like you could use a wiggle. I'll lead!" },
+  { "kind": "stretch", "text": "Your neck says hi. It also says ow. Stretch with me?" },
+  { "kind": "stretchDone", "text": "Ahh, much better. I feel taller already." },
+  { "kind": "stretchDone", "text": "Nicely done! Your back sends its thanks." },
+  { "kind": "stretchDone", "text": "And relax. That's one unbent paperclip, one unbent you." },
+  { "kind": "stretchDone", "text": "Stretch complete! Gold star. Well, a silver one." },
+  { "kind": "stretchDone", "text": "Better already, right? Back to it, good as new." },
+  { "kind": "stretchDone", "text": "Namaste. That's paperclip for 'well done'." },
+  { "kind": "stretchDone", "text": "Creaks: fixed. Posture: improved. Mood: paperclip-level high." },
+  { "kind": "stretchDone", "text": "Lovely. I'll nudge you again in a while." }
+]

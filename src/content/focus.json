@@ -1,0 +1,20 @@
+[
+  { "kind": "focusStart", "text": "Focus mode on. I'll keep my wire quiet." },
+  { "kind": "focusStart", "text": "It looks like you're about to concentrate. I'll stay out of the way." },
+  { "kind": "focusStart", "text": "Timer's on my mat. No jokes, no tips, no nagging." },
+  { "kind": "focusStart", "text": "Deep work time. I'm practically furniture now." },
+  { "kind": "focusStart", "text": "Go get 'em. I'll be right here, being silent and shiny." },
+  { "kind": "focusStart", "text": "Focus started. Pretend I'm not here. (I'm very good at that.)" },
+  { "kind": "focusDone", "text": "Time! You did it. That was a proper focus round." },
+  { "kind": "focusDone", "text": "Ding! Round complete. I'm so proud I could bend." },
+  { "kind": "focusDone", "text": "And... done! Look at you, concentrating like a pro." },
+  { "kind": "focusDone", "text": "It looks like you finished a whole focus round. Impressive!" },
+  { "kind": "focusDone", "text": "Time's up, hero. Take a bow. Or a break." },
+  { "kind": "focusDone", "text": "Focus complete! I kept quiet the whole time. Did you notice?" },
+  { "kind": "focusDone", "text": "Round finished! Confetti would be on the budget, but I have sparkles." },
+  { "kind": "focusDone", "text": "That's the timer! Great work. What next?" },
+  { "kind": "focusBreak", "text": "Break time! Stand up, sip some water, look at something far away." },
+  { "kind": "focusBreak", "text": "Good call. Rest your eyes, shake out your hands, I'll watch the desk." },
+  { "kind": "focusBreak", "text": "Enjoy it! Stretch your legs, you've earned a breather." },
+  { "kind": "focusBreak", "text": "Off you go. I'll be here when you're ready for round two." }
+]

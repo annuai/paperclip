@@ -17,6 +17,8 @@ const MAX_H = 374; // the stage is 380px tall: a longer main menu scrolls instea
 const ROW_H = 26; // visual row height is themed in CSS; used only for clamping (flat rows are 30px)
 const CHECK_SVG =
   '<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M2 6.5 L5 9.5 L10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const BACK_SVG =
+  '<svg viewBox="0 0 12 12" width="9" height="9" aria-hidden="true"><path d="M8 2 L4 6 L8 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const ARROW_SVG =
   '<svg viewBox="0 0 12 12" width="9" height="9" aria-hidden="true"><path d="M4 2 L8 6 L4 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -25,6 +27,9 @@ export class ContextMenu {
   private sub: HTMLElement | null = null;
   private subItem: HTMLElement | null = null;
   private level: 'main' | 'sub' = 'main';
+  /** The top-level item whose children fill the sub-panel, and the items drilled into beneath it. */
+  private subData: MenuItem | null = null;
+  private trail: MenuItem[] = [];
 
   constructor(
     private readonly el: HTMLElement,
@@ -88,7 +93,7 @@ export class ContextMenu {
     return this.el.contains(n) || (this.sub?.contains(n) ?? false);
   }
 
-  private addRow(host: HTMLElement, it: MenuItem, onHover: () => void): number {
+  private addRow(host: HTMLElement, it: MenuItem, onHover: () => void, back = false): number {
     if (it.separatorBefore) {
       const s = document.createElement('div');
       s.className = 'sep';
@@ -105,6 +110,14 @@ export class ContextMenu {
     label.textContent = it.label;
     const tail = document.createElement('span');
     tail.className = 'chk';
+    if (back) {
+      row.classList.add('back');
+      row.setAttribute('aria-label', 'Back');
+      tail.innerHTML = BACK_SVG;
+      tail.dataset.back = '1';
+      row.append(tail, label); // the chevron leads on a back row
+      return this.finishRow(host, row, it, onHover, true);
+    }
     if (it.children) {
       tail.innerHTML = ARROW_SVG;
       row.classList.add('has-sub');
@@ -114,6 +127,10 @@ export class ContextMenu {
       if (it.checked) tail.dataset.on = '1';
     }
     row.append(label, tail);
+    return this.finishRow(host, row, it, onHover, false);
+  }
+
+  private finishRow(host: HTMLElement, row: HTMLElement, it: MenuItem, onHover: () => void, back: boolean): number {
     if (it.disabled) {
       row.classList.add('disabled');
       row.setAttribute('aria-disabled', 'true');
@@ -126,7 +143,12 @@ export class ContextMenu {
     });
     row.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (it.children) { this.openSub(it, true); return; }
+      if (back) { this.back(); return; }
+      if (it.children) {
+        if (host === this.el) this.openSub(it, true);
+        else this.drill(it); // a submenu inside the sub-panel replaces its rows (the window is only 320px wide)
+        return;
+      }
       this.close();
       this.onPick(it.id);
     });
@@ -150,7 +172,7 @@ export class ContextMenu {
     if (!it.children) { this.closeSub(); return; }
     const row = this.rows(this.el).find((r) => r.dataset.id === it.id) as HTMLElement;
     if (this.subItem === row && this.sub && !this.sub.classList.contains('hidden')) {
-      if (focusFirst) this.focusSub(0);
+      if (focusFirst) this.focusSub(this.trail.length ? 1 : 0);
       return;
     }
     this.closeSub();
@@ -160,19 +182,69 @@ export class ContextMenu {
       this.sub.setAttribute('role', 'menu');
       this.el.parentElement?.append(this.sub);
     }
-    this.sub.textContent = '';
-    for (const c of it.children) this.addRow(this.sub, c, () => undefined);
+    this.subData = it;
+    this.trail = [];
+    this.fillSub();
     const mx = parseFloat(this.el.style.left) || 0;
-    const my = parseFloat(this.el.style.top) || 0;
     const subX = mx + W + SUB_W + 2 <= 320 ? mx + W - 2 : Math.max(0, mx - SUB_W + 2);
     this.sub.style.left = subX + 'px';
     this.sub.style.width = SUB_W + 'px';
     this.sub.classList.remove('hidden');
-    this.sub.style.top = Math.max(2, Math.min(my + row.offsetTop - this.el.scrollTop, 380 - this.sub.offsetHeight - 4)) + 'px';
     this.subItem = row;
+    this.placeSub();
     row.classList.add('sub-open');
     this.onVisibility(true);
     if (focusFirst) this.focusSub(0);
+  }
+
+  /** The rows the sub-panel shows right now: the open item's children, or those of the item drilled into. */
+  private subList(): MenuItem[] {
+    return (this.trail.length ? this.trail[this.trail.length - 1] : this.subData)?.children ?? [];
+  }
+
+  private fillSub(): void {
+    if (!this.sub) return;
+    this.sub.textContent = '';
+    this.sub.scrollTop = 0;
+    const cur = this.trail[this.trail.length - 1];
+    if (cur) {
+      // A "< Name" row leads back one level; the rest follow after a rule.
+      this.addRow(this.sub, { id: '__back', label: cur.label }, () => undefined, true);
+      const sep = document.createElement('div');
+      sep.className = 'sep';
+      sep.setAttribute('role', 'separator');
+      this.sub.append(sep);
+    }
+    for (const c of this.subList()) this.addRow(this.sub, c, () => undefined);
+  }
+
+  /** Aligns the sub-panel with the row that opened it, kept inside the 380px window. */
+  private placeSub(): void {
+    if (!this.sub || !this.subItem) return;
+    const my = parseFloat(this.el.style.top) || 0;
+    this.sub.style.top = Math.max(2, Math.min(my + this.subItem.offsetTop - this.el.scrollTop, 380 - this.sub.offsetHeight - 4)) + 'px';
+  }
+
+  /** Opens a submenu that lives inside the sub-panel (Wellbeing > Water reminders): its rows replace the current ones. */
+  private drill(it: MenuItem): void {
+    if (!it.children || !this.sub) return;
+    this.trail.push(it);
+    this.fillSub();
+    this.placeSub();
+    this.onVisibility(true);
+    this.focusSub(1); // row 0 is the back row
+  }
+
+  /** One level out of a drilled-into submenu, keeping the row we came from highlighted. */
+  private back(): void {
+    const left = this.trail.pop();
+    if (!left || !this.sub) return;
+    this.fillSub();
+    this.placeSub();
+    this.onVisibility(true);
+    this.level = 'sub';
+    const row = this.rows(this.sub).find((r) => r.dataset.id === left.id);
+    if (row) this.activate(row);
   }
 
   private closeSub(): void {
@@ -180,6 +252,8 @@ export class ContextMenu {
       this.sub.classList.add('hidden');
       this.subItem?.classList.remove('sub-open');
       this.subItem = null;
+      this.subData = null;
+      this.trail = [];
       this.level = 'main';
       if (this.open_) this.onVisibility(true);
     }
@@ -199,7 +273,8 @@ export class ContextMenu {
     const cur = rows.findIndex((r) => r.classList.contains('active'));
     switch (e.key) {
       case 'Escape':
-        if (this.level === 'sub') {
+        if (this.level === 'sub' && this.trail.length) this.back();
+        else if (this.level === 'sub') {
           const it = this.subItem;
           this.closeSub();
           if (it) this.activate(it);
@@ -212,10 +287,11 @@ export class ContextMenu {
         this.activate(rows[(cur <= 0 ? rows.length : cur) - 1]);
         break;
       case 'ArrowRight':
-        if (this.level === 'main' && cur >= 0 && rows[cur].classList.contains('has-sub')) rows[cur].click();
+        if (cur >= 0 && rows[cur].classList.contains('has-sub')) rows[cur].click();
         break;
       case 'ArrowLeft':
-        if (this.level === 'sub') {
+        if (this.level === 'sub' && this.trail.length) this.back();
+        else if (this.level === 'sub') {
           const it = this.subItem;
           this.closeSub();
           if (it) this.activate(it);

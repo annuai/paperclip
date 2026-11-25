@@ -7,10 +7,14 @@ import sleep from './sleep.json';
 import hydration from './hydration.json';
 import thanks from './thanks.json';
 import presence from './presence.json';
+import stretch from './stretch.json';
+import focus from './focus.json';
+import meeting from './meeting.json';
 import { ShuffleBag } from '../util/shuffleBag';
 import type { Rng } from '../util/rng';
 
-export type ContentKind = 'greeting' | 'quote' | 'joke' | 'tip' | 'dizzy' | 'sleep' | 'hydration' | 'thanks' | 'lowBattery' | 'overheating' | 'lateNight';
+export type ContentKind = 'greeting' | 'quote' | 'joke' | 'tip' | 'dizzy' | 'sleep' | 'hydration' | 'thanks' | 'lowBattery' | 'overheating' | 'lateNight'
+  | 'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting';
 export interface ContentItem { kind: ContentKind; text: string; attribution?: string }
 export interface ContentProvider { next(kind: ContentKind, ctx?: { now?: Date }): Promise<ContentItem> }
 
@@ -34,6 +38,7 @@ export class LocalContentProvider implements ContentProvider {
   private readonly hydrationBag: ShuffleBag<string>;
   private readonly thanksBag: ShuffleBag<string>;
   private readonly presenceBags: Record<'lowBattery' | 'overheating' | 'lateNight', ShuffleBag<string>>;
+  private readonly wellbeingBags: Record<'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting', ShuffleBag<string>>;
 
   constructor(rng: Rng = Math.random) {
     const byPeriod = (p: Period) => greetings.filter((g) => g.period === p).map((g) => g.text);
@@ -55,6 +60,15 @@ export class LocalContentProvider implements ContentProvider {
       lowBattery: new ShuffleBag(ofKind('lowBattery'), rng),
       overheating: new ShuffleBag(ofKind('overheating'), rng),
       lateNight: new ShuffleBag(ofKind('lateNight'), rng),
+    };
+    const lines = (xs: { kind: string; text: string }[], k: string) => new ShuffleBag(xs.filter((l) => l.kind === k).map((l) => l.text), rng);
+    this.wellbeingBags = {
+      stretch: lines(stretch, 'stretch'),
+      stretchDone: lines(stretch, 'stretchDone'),
+      focusStart: lines(focus, 'focusStart'),
+      focusDone: lines(focus, 'focusDone'),
+      focusBreak: lines(focus, 'focusBreak'),
+      meeting: lines(meeting, 'meeting'), // templates: {when} and {title} are filled in by meetingLine()
     };
   }
 
@@ -82,6 +96,13 @@ export class LocalContentProvider implements ContentProvider {
       case 'overheating':
       case 'lateNight':
         return { kind, text: this.presenceBags[kind].next() };
+      case 'stretch':
+      case 'stretchDone':
+      case 'focusStart':
+      case 'focusDone':
+      case 'focusBreak':
+      case 'meeting':
+        return { kind, text: this.wellbeingBags[kind].next() };
     }
   }
 }

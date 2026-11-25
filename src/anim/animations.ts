@@ -23,6 +23,20 @@ const loop = (to: number, exit: number): Partial<Frame> => ({
   exitBranch: exit,
 });
 
+/** A long pose hold split into short frames, so exit() (a click, an interrupt) never waits more than ~0.8 s. */
+const hold = (total: number, pose: PosePatch, ease?: Frame['ease']): Frame[] => {
+  const out: Frame[] = [];
+  for (let left = total; left > 0; left -= 800) out.push(f(Math.min(800, left), pose, ease ? { ease } : {}));
+  return out;
+};
+/** Long guided animations are cuttable: exit() jumps to the last frame (the return to NEUTRAL). */
+const cuttable = (a: Animation): Animation => {
+  const last = a.frames.length - 1;
+  a.frames.forEach((fr, i) => { if (i < last) fr.exitBranch = last; });
+  a.useExitBranching = true;
+  return a;
+};
+
 const thinkBrows: PosePatch = { browL: { angle: -8, lift: -5 }, browR: { angle: 8, lift: 1 } };
 const scratchBrows: PosePatch = { browL: { angle: -6, lift: -3 }, browR: { angle: 6, lift: 0 } };
 const scratch = (y: number): PosePatch =>
@@ -236,6 +250,52 @@ export const ANIMATIONS: Record<AnimName, Animation> = {
     f(460, P(brows(-8), mouth(0.9), lids(0.8), body({ squash: 1.12, y: -5 }), { eyes: { sy: 0.88 } })),
     f(300, P(brows(3, -6), mouth(0.25), lids(0.85), body({ tilt: 4, squash: 0.95 }))),
     f(260, P(brows(1, -3), lids(0.2), body({ squash: 1.02 }))),
+    f(200, {}) ] },
+  // ---- Wellbeing (phase 2): all end at NEUTRAL ----
+  Stretch: cuttable({ frames: [ // stretch-break cue on the mat: reach up, side bend both ways, forward fold (~4.6 s)
+    f(260, P(body({ squash: 0.92, y: 2 }), brows(2), mat({ squash: 0.97 }))), // breathe in
+    f(520, P(body({ squash: 1.24, y: -8 }), brows(-6), lids(0.35), mouth(0.25), mat({ squash: 1 })), { ease: 'out' }), // reach up
+    f(360, P(body({ squash: 1.24, y: -8 }), brows(-7), lids(0.4), mouth(0.25))),
+    f(420, P(body({ squash: 1.1, tilt: -22, x: -11, y: -2 }), brows(-4), lids(0.4))), // side bend left
+    f(340, P(body({ squash: 1.1, tilt: -23, x: -12, y: -2 }), brows(-4), lids(0.45))),
+    f(480, P(body({ squash: 1.1, tilt: 22, x: 11, y: -2 }), brows(-4), lids(0.4))), // and right
+    f(340, P(body({ squash: 1.1, tilt: 23, x: 12, y: -2 }), brows(-4), lids(0.45))),
+    f(520, P(body({ squash: 0.72, y: 9, tilt: 5 }), brows(3, -4), lids(0.7), mat({ squash: 0.95 })), { ease: 'in' }), // forward fold
+    f(420, P(body({ squash: 0.7, y: 10, tilt: 8 }), brows(3, -4), lids(0.75), mat({ squash: 0.95 }))),
+    f(380, P(body({ squash: 1.06, y: -2 }), brows(-3), lids(0.2), mouth(0.2), mat({ squash: 1 }))), // roll back up, exhale
+    f(220, {}) ] }),
+  StretchReach: cuttable({ frames: [ // guided: breathe in, reach for the ceiling, hold, breathe out (~7 s)
+    f(700, P(body({ squash: 0.94, y: 2 }), brows(2), lids(0.2), mat({ squash: 0.98 }))),
+    f(1500, P(body({ squash: 1.24, y: -8 }), brows(-6), lids(0.35), mouth(0.3), mat({ squash: 1 })), { ease: 'out' }),
+    ...hold(1700, P(body({ squash: 1.27, y: -10 }), brows(-7), lids(0.5), mouth(0.2))),
+    ...hold(1500, P(body({ squash: 1.25, y: -9, tilt: 1.5 }), brows(-7), lids(0.5), mouth(0.2))),
+    f(1000, P(body({ squash: 1.05, y: -1 }), brows(-3), lids(0.3), mouth(0.35))), // exhale
+    f(600, {}) ] }),
+  StretchSide: cuttable({ frames: [ // guided: lean left, hold, back up, lean right, hold (~9.5 s)
+    f(800, P(body({ squash: 1.1, y: -3 }), brows(-4), lids(0.3))),
+    f(1900, P(body({ squash: 1.08, tilt: -24, x: -12, y: -2 }), brows(-4), lids(0.45), mat({ squash: 0.99 })), { ease: 'out' }),
+    ...hold(1600, P(body({ squash: 1.08, tilt: -26, x: -13, y: -2 }), brows(-4), lids(0.55))),
+    f(1200, P(body({ squash: 1.1, y: -3 }), brows(-4), lids(0.3))),
+    f(1900, P(body({ squash: 1.08, tilt: 24, x: 12, y: -2 }), brows(-4), lids(0.45), mat({ squash: 0.99 })), { ease: 'out' }),
+    ...hold(1600, P(body({ squash: 1.08, tilt: 26, x: 13, y: -2 }), brows(-4), lids(0.55))),
+    f(500, {}) ] }),
+  StretchFold: cuttable({ frames: [ // guided: inhale, forward fold, hang and sway, roll up (~7.5 s)
+    f(900, P(body({ squash: 1.12, y: -4 }), brows(-4), lids(0.3), mouth(0.2))),
+    f(1800, P(body({ squash: 0.7, y: 10, tilt: 6 }), brows(3, -4), lids(0.7), mat({ squash: 0.95 })), { ease: 'in' }),
+    ...hold(1400, P(body({ squash: 0.68, y: 11, tilt: 10 }), brows(3, -5), lids(0.8), mat({ squash: 0.94 }))),
+    ...hold(1400, P(body({ squash: 0.68, y: 11, tilt: 3 }), brows(3, -5), lids(0.8), mat({ squash: 0.94 }))),
+    f(1500, P(body({ squash: 1.06, y: -2 }), brows(-3), lids(0.2), mouth(0.25), mat({ squash: 1 }))),
+    f(500, {}) ] }),
+  Celebrate: { frames: [ // focus round finished: two big hops, spin-wiggle, confetti sparkles (~2.4 s)
+    f(120, P(body({ squash: 0.8, y: 4 }), brows(2), mat({ squash: 0.9 }))),
+    f(200, P(body({ squash: 1.24, y: -34, tilt: -8 }), brows(-9), mouth(0.7), lids(0.3), prop('sparkles', { rot: 20 }), mat({ squash: 1.03 })), { ease: 'out' }),
+    f(180, P(body({ squash: 0.84, y: 3, tilt: 4 }), brows(-4), prop('sparkles', { rot: 50 }), mat({ squash: 0.9 })), { ease: 'in' }),
+    f(200, P(body({ squash: 1.24, y: -38, tilt: 9 }), brows(-9), mouth(0.7), lids(0.3), prop('sparkles', { rot: 90 }), mat({ squash: 1.03 })), { ease: 'out' }),
+    f(180, P(body({ squash: 0.84, y: 3, tilt: -4 }), brows(-4), prop('sparkles', { rot: 130 }), mat({ squash: 0.9 })), { ease: 'in' }),
+    f(160, P(body({ tilt: -10, x: -5, squash: 1.06 }), brows(-8), mouth(0.4), lids(0.3), prop('sparkles', { rot: 170 }))),
+    f(160, P(body({ tilt: 10, x: 5, squash: 1.06 }), brows(-8), mouth(0.4), lids(0.3), prop('sparkles', { rot: 210 }))),
+    f(160, P(body({ tilt: -6, x: -3 }), brows(-6), lids(0.35), prop('sparkles', { rot: 250 }))),
+    f(260, P(brows(-5), lids(0.4), prop('sparkles', { rot: 290 }))),
     f(200, {}) ] },
   Jump: { frames: [
     f(80,  P(body({ squash: 0.8, y: 4 }), brows(3), lids(0.25), mat({ squash: 0.88 }))),                     // crouch, mat dips

@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { WindowCtl } from '../agent/agent';
 import type { Rect } from '../ui/hitRects';
+import type { CalEvent } from '../agent/meeting';
 
 async function guard<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
   try {
@@ -50,6 +51,12 @@ export async function onSystem(cb: (s: SystemInfo) => void): Promise<() => void>
 export async function getSystem(): Promise<SystemInfo | undefined> {
   return guard('get_system', () => invoke<SystemInfo>('get_system'));
 }
+export interface WellbeingTray {
+  stretchEnabled: boolean;
+  stretchInterval: number;
+  focusLeft: number | null; // whole minutes left in a running focus session
+  meeting: boolean;
+}
 export async function syncTray(
   visible: boolean,
   quiet: boolean,
@@ -58,10 +65,11 @@ export async function syncTray(
   water = { enabled: true, intervalMin: 45, glasses: 0 },
   greet = true,
   presence = { hidePresenting: true, music: true },
+  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false },
 ): Promise<void> {
   await guard('sync_tray', () =>
     invoke('sync_tray', {
-      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music },
+      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music, stretchEnabled: wellbeing.stretchEnabled, stretchInterval: wellbeing.stretchInterval, focusLeft: wellbeing.focusLeft, meeting: wellbeing.meeting },
     }),
   );
 }
@@ -73,4 +81,24 @@ export async function quitApp(): Promise<void> {
 }
 export async function onTrayAction(cb: (a: { id: string; checked?: boolean }) => void): Promise<() => void> {
   return listen<{ id: string; checked?: boolean }>('tray-action', (e) => cb(e.payload));
+}
+
+export type CalendarAccess = 'granted' | 'denied' | 'notDetermined' | 'unsupported';
+/** macOS only. False elsewhere (and in a plain browser), which hides the Meeting heads-up toggle. */
+export async function calendarSupported(): Promise<boolean> {
+  return (await guard('calendar_supported', () => invoke<boolean>('calendar_supported'))) === true;
+}
+/** Reads the authorization without ever prompting. */
+export async function calendarStatus(): Promise<CalendarAccess> {
+  return (await guard('calendar_status', () => invoke<CalendarAccess>('calendar_status'))) ?? 'unsupported';
+}
+/** Shows the macOS calendar prompt (first time only). Call it only when the user turns the toggle on. */
+export async function calendarRequestAccess(): Promise<CalendarAccess> {
+  return (await guard('calendar_request_access', () => invoke<CalendarAccess>('calendar_request_access'))) ?? 'denied';
+}
+export async function calendarSetEnabled(enabled: boolean): Promise<void> {
+  await guard('calendar_set_enabled', () => invoke('calendar_set_enabled', { enabled }));
+}
+export async function onMeetingEvents(cb: (events: CalEvent[]) => void): Promise<() => void> {
+  return listen<CalEvent[]>('meeting-events', (e) => cb(e.payload));
 }

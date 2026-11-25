@@ -1,6 +1,9 @@
 import type { SchedulerConfig } from '../agent/scheduler';
 import { DEFAULT_INTERVAL, INTERVAL_OPTIONS } from '../agent/hydration';
 import type { IntervalMin } from '../agent/hydration';
+import { DEFAULT_STRETCH_MIN, STRETCH_OPTIONS } from '../agent/stretch';
+import type { StretchConfig } from '../agent/stretch';
+import type { FocusSaved } from '../agent/focus';
 import { DEFAULT_STYLE, normalizeStyle } from '../art/style';
 import type { Style } from '../art/style';
 
@@ -22,11 +25,14 @@ export interface Settings {
   greetOnUnlock: boolean; // say hello when the screen is unlocked (default on)
   hideWhenPresenting: boolean; // slip away while another app is full screen / presenting (default on)
   reactToMusic: boolean; // dance now and then while audio is playing (default on)
+  stretch: StretchConfig; // stretch-break nudges (default on, every 60 active minutes)
+  focus: FocusSaved | null; // a running focus session's end timestamp (survives sleep and restarts)
+  meetingHeadsUp: boolean; // macOS: say something 5 min before a calendar event (default off, asks for access when turned on)
 }
 
 export const DEFAULT_WATER: WaterSettings = { enabled: true, intervalMin: DEFAULT_INTERVAL, lastReminderAt: null, glasses: 0, glassesDate: '' };
 
-export const DEFAULTS: Settings = { quiet: false, scheduler: {}, position: null, hidden: false, style: DEFAULT_STYLE, water: DEFAULT_WATER, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true };
+export const DEFAULTS: Settings = { quiet: false, scheduler: {}, position: null, hidden: false, style: DEFAULT_STYLE, water: DEFAULT_WATER, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, stretch: { enabled: true, everyMin: DEFAULT_STRETCH_MIN }, focus: null, meetingHeadsUp: false };
 
 /** Validate raw persisted values (anything can be in the store file) into a Settings object. */
 export function parseSettings(raw: Record<string, unknown>): Settings {
@@ -46,6 +52,9 @@ export function parseSettings(raw: Record<string, unknown>): Settings {
     greetOnUnlock: raw.greetOnUnlock !== false,
     hideWhenPresenting: raw.hideWhenPresenting !== false,
     reactToMusic: raw.reactToMusic !== false,
+    stretch: parseStretch(raw.stretch),
+    focus: parseFocus(raw.focus),
+    meetingHeadsUp: raw.meetingHeadsUp === true,
   };
 }
 
@@ -61,4 +70,18 @@ export function parseWater(raw: unknown): WaterSettings {
     glasses,
     glassesDate: typeof w.glassesDate === 'string' ? w.glassesDate : '',
   };
+}
+
+export function parseStretch(raw: unknown): StretchConfig {
+  const s = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    enabled: s.enabled !== false, // on by default
+    everyMin: STRETCH_OPTIONS.find((n) => n === s.everyMin) ?? DEFAULT_STRETCH_MIN,
+  };
+}
+
+export function parseFocus(raw: unknown): FocusSaved | null {
+  const f = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0;
+  return ok(f.endsAt) && ok(f.minutes) ? { endsAt: f.endsAt, minutes: f.minutes } : null;
 }

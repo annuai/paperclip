@@ -8,6 +8,9 @@ import sleep from './sleep.json';
 import hydration from './hydration.json';
 import thanks from './thanks.json';
 import presence from './presence.json';
+import stretch from './stretch.json';
+import focus from './focus.json';
+import meeting from './meeting.json';
 import { LocalContentProvider, periodOf } from './provider';
 import { mulberry32 } from '../util/rng';
 
@@ -29,7 +32,7 @@ describe('content', () => {
     expect(tips).toHaveLength(20);
   });
   it('texts are non-empty, <=180 chars and unique', () => {
-    [greetings, quotes, jokes, tips, dizzy, sleep, hydration, thanks, presence].forEach(valid);
+    [greetings, quotes, jokes, tips, dizzy, sleep, hydration, thanks, presence, stretch, focus, meeting].forEach(valid);
     expect(hydration.length).toBeGreaterThanOrEqual(15);
     expect(hydration.every((x) => x.text.length <= 100)).toBe(true); // must fit the balloon with its buttons
     expect(sleep.length).toBeGreaterThanOrEqual(10);
@@ -43,6 +46,23 @@ describe('content', () => {
     }
     expect(presence.every((l) => ['lowBattery', 'overheating', 'lateNight'].includes(l.kind))).toBe(true);
     expect(presence.filter((l) => l.text.startsWith("It looks like you're")).length).toBeGreaterThanOrEqual(6);
+  });
+  it('wellbeing lines: enough variety, balloon-sized, in his voice', () => {
+    const of = <T extends { kind: string }>(xs: T[], k: string) => xs.filter((l) => l.kind === k);
+    for (const [xs, k, min] of [[stretch, 'stretch', 10], [stretch, 'stretchDone', 8], [focus, 'focusStart', 5], [focus, 'focusDone', 8], [focus, 'focusBreak', 4], [meeting, 'meeting', 5]] as const) {
+      const lines = of(xs, k);
+      expect(lines.length, k).toBeGreaterThanOrEqual(min);
+      expect(lines.every((l) => l.text.length <= 100), k).toBe(true); // offers carry two buttons: keep them short
+    }
+    expect(of(stretch, 'stretch').filter((l) => l.text.startsWith("It looks like you")).length).toBeGreaterThanOrEqual(4);
+  });
+  it('meeting templates use {when} and {title} exactly once and fit with a 48 char title', () => {
+    for (const m of meeting) {
+      expect(m.text.split('{title}').length, m.text).toBe(2);
+      expect(m.text.includes('{when}'), m.text).toBe(true);
+      expect(m.text.replace('{title}', 'x'.repeat(48)).replace('{when}', '5 minutes').length, m.text).toBeLessThanOrEqual(130);
+    }
+    expect(meeting.some((m) => m.text === 'It looks like you have a meeting in {when}: {title}')).toBe(true);
   });
   it('tips and quotes have the right shape', () => {
     expect(tips.every((t) => t.text.startsWith("It looks like you're"))).toBe(true);

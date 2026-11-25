@@ -17,6 +17,11 @@ pub struct TrayHandles {
     greet: CheckMenuItem<Wry>,
     hide_presenting: CheckMenuItem<Wry>,
     react_to_music: CheckMenuItem<Wry>,
+    stretch_enabled: CheckMenuItem<Wry>,
+    stretch_intervals: Vec<(u32, CheckMenuItem<Wry>)>,
+    focus_stop: MenuItem<Wry>,
+    focus_info: MenuItem<Wry>,
+    meeting: CheckMenuItem<Wry>,
 }
 
 #[derive(Clone, Serialize)]
@@ -52,6 +57,47 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     water_items.push(&water_now);
     water_items.push(&water_info);
     let water_menu = Submenu::with_items(app, "Water reminders", true, &water_items)?;
+    // Stretch breaks: same shape as the water submenu.
+    let stretch_enabled = CheckMenuItem::with_id(app, "stretch-enabled", "Remind me", true, true, None::<&str>)?;
+    let mut stretch_intervals: Vec<(u32, CheckMenuItem<Wry>)> = Vec::new();
+    for n in [30u32, 45, 60, 90] {
+        let item = CheckMenuItem::with_id(app, format!("stretch-{n}"), format!("Every {n} min"), true, n == 60, None::<&str>)?;
+        stretch_intervals.push((n, item));
+    }
+    let stretch_now = MenuItem::with_id(app, "stretch-now", "Stretch now", true, None::<&str>)?;
+    let stretch_sep1 = PredefinedMenuItem::separator(app)?;
+    let stretch_sep2 = PredefinedMenuItem::separator(app)?;
+    let mut stretch_items: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = vec![&stretch_enabled, &stretch_sep1];
+    for (_, item) in &stretch_intervals {
+        stretch_items.push(item);
+    }
+    stretch_items.push(&stretch_sep2);
+    stretch_items.push(&stretch_now);
+    let stretch_menu = Submenu::with_items(app, "Stretch breaks", true, &stretch_items)?;
+    // Focus timer: four lengths, Stop (only while running) and a read-only time-left line.
+    let mut focus_starts: Vec<MenuItem<Wry>> = Vec::new();
+    for n in [15u32, 25, 45, 60] {
+        focus_starts.push(MenuItem::with_id(app, format!("focus-{n}"), format!("{n} minutes"), true, None::<&str>)?);
+    }
+    let focus_stop = MenuItem::with_id(app, "focus-stop", "Stop", false, None::<&str>)?;
+    let focus_info = MenuItem::with_id(app, "focus-info", "Not running", false, None::<&str>)?;
+    let focus_sep = PredefinedMenuItem::separator(app)?;
+    let mut focus_items: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = Vec::new();
+    for item in &focus_starts {
+        focus_items.push(item);
+    }
+    focus_items.push(&focus_sep);
+    focus_items.push(&focus_stop);
+    focus_items.push(&focus_info);
+    let focus_menu = Submenu::with_items(app, "Focus timer", true, &focus_items)?;
+    // Meeting heads-up exists everywhere (the handle is shared) but only macOS puts it in the menu.
+    let meeting = CheckMenuItem::with_id(app, "meeting", "Meeting heads-up", true, false, None::<&str>)?;
+    // Wellbeing groups the reminder-style features so the top level stays short.
+    let mut wellbeing_items: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = vec![&water_menu, &stretch_menu, &focus_menu];
+    if cfg!(target_os = "macos") {
+        wellbeing_items.push(&meeting);
+    }
+    let wellbeing_menu = Submenu::with_items(app, "Wellbeing", true, &wellbeing_items)?;
     let greet = CheckMenuItem::with_id(app, "greet", "Greet me when I unlock", true, true, None::<&str>)?;
     let hide_presenting = CheckMenuItem::with_id(app, "presence-hide", "Hide when presenting", true, true, None::<&str>)?;
     let react_to_music = CheckMenuItem::with_id(app, "presence-music", "Dance to music", true, true, None::<&str>)?;
@@ -66,7 +112,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let sep3 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[&toggle, &sep1, &hi, &joke, &quote, &animate, &nap, &sep2, &quiet, &greet, &presence_menu, &style_menu, &water_menu, &autostart, &sep3, &quit],
+        &[&toggle, &sep1, &hi, &joke, &quote, &animate, &nap, &sep2, &quiet, &greet, &presence_menu, &style_menu, &wellbeing_menu, &autostart, &sep3, &quit],
     )?;
 
     app.manage(TrayHandles {
@@ -81,6 +127,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         greet: greet.clone(),
         hide_presenting: hide_presenting.clone(),
         react_to_music: react_to_music.clone(),
+        stretch_enabled: stretch_enabled.clone(),
+        stretch_intervals: stretch_intervals.clone(),
+        focus_stop: focus_stop.clone(),
+        focus_info: focus_info.clone(),
+        meeting: meeting.clone(),
     });
 
     let mut builder = TrayIconBuilder::with_id("main").tooltip("Paperclip").menu(&menu);
@@ -144,6 +195,23 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                         let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked: None });
                     }
                 }
+                "stretch-enabled" => {
+                    let checked = stretch_enabled.is_checked().ok();
+                    let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked });
+                }
+                id if id.starts_with("stretch-") && id != "stretch-now" => {
+                    if let Some(n) = id.strip_prefix("stretch-").and_then(|s| s.parse::<u32>().ok()) {
+                        // Radio behaviour for the interval items.
+                        for (m, item) in &stretch_intervals {
+                            let _ = item.set_checked(*m == n);
+                        }
+                        let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked: Some(true) });
+                    }
+                }
+                "meeting" => {
+                    let checked = meeting.is_checked().ok();
+                    let _ = app.emit("tray-action", TrayAction { id: "meeting".to_string(), checked });
+                }
                 "presence-hide" => {
                     let checked = hide_presenting.is_checked().ok();
                     let _ = app.emit("tray-action", TrayAction { id: "presence-hide".to_string(), checked });
@@ -189,10 +257,15 @@ pub struct TraySync {
     greet: bool,
     hide_presenting: bool,
     react_to_music: bool,
+    stretch_enabled: bool,
+    stretch_interval: u32,
+    /// Whole minutes left in a running focus session; `None` when no timer is running.
+    focus_left: Option<u32>,
+    meeting: bool,
 }
 
 #[tauri::command]
-pub fn sync_tray(state: State<'_, TrayHandles>, sync: TraySync) -> Result<(), String> {
+pub fn sync_tray(app: AppHandle, state: State<'_, TrayHandles>, sync: TraySync) -> Result<(), String> {
     state
         .toggle
         .set_text(if sync.visible { "Hide Paperclip" } else { "Show Paperclip" })
@@ -212,5 +285,41 @@ pub fn sync_tray(state: State<'_, TrayHandles>, sync: TraySync) -> Result<(), St
     state.greet.set_checked(sync.greet).map_err(|e| e.to_string())?;
     state.hide_presenting.set_checked(sync.hide_presenting).map_err(|e| e.to_string())?;
     state.react_to_music.set_checked(sync.react_to_music).map_err(|e| e.to_string())?;
+    state.stretch_enabled.set_checked(sync.stretch_enabled).map_err(|e| e.to_string())?;
+    for (m, item) in &state.stretch_intervals {
+        item.set_checked(*m == sync.stretch_interval).map_err(|e| e.to_string())?;
+    }
+    state.focus_stop.set_enabled(sync.focus_left.is_some()).map_err(|e| e.to_string())?;
+    state.focus_info.set_text(focus_label(sync.focus_left)).map_err(|e| e.to_string())?;
+    state.meeting.set_checked(sync.meeting).map_err(|e| e.to_string())?;
+    if let Some(tray) = app.tray_by_id("main") {
+        // The time left, where the user looks: the tooltip everywhere, plus a short title next to the macOS icon.
+        let tip = match sync.focus_left {
+            Some(_) => format!("Paperclip - {}", focus_label(sync.focus_left)),
+            None => "Paperclip".to_string(),
+        };
+        let _ = tray.set_tooltip(Some(tip));
+        #[cfg(target_os = "macos")]
+        let _ = tray.set_title(sync.focus_left.map(|n| format!("{n}m")));
+    }
     state.quiet.set_checked(sync.quiet).map_err(|e| e.to_string())
+}
+
+/// "Not running", "1 min left", "18 min left".
+fn focus_label(left: Option<u32>) -> String {
+    match left {
+        None => "Not running".to_string(),
+        Some(n) => format!("{n} min left"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::focus_label;
+
+    #[test]
+    fn focus_label_reads_naturally() {
+        assert_eq!(focus_label(None), "Not running");
+        assert_eq!(focus_label(Some(18)), "18 min left");
+    }
 }

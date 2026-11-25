@@ -202,12 +202,12 @@ describe('reduced motion', () => {
 
 describe('animation catalogue', () => {
   const names = Object.keys(ANIMATIONS) as AnimName[];
-  it('has all 31 names', () => {
+  it('has all 36 names', () => {
     expect(names.sort()).toEqual([
       'Blink', 'Congratulate', 'Dizzy', 'EnterPop', 'EnterSlide', 'EnterTumble', 'ExitRollUp', 'ExitSpring',
       'Drink', 'Noticed', 'ExitWave', 'Explain', 'FallAsleep', 'GetAttention', 'Greeting', 'IdleEyeRoll', 'IdleHeadScratch', 'Jump',
       'IdleSideToSide', 'LookDown', 'LookLeft', 'LookRight', 'LookUp', 'Sleeping', 'Thinking', 'WakeUp', 'Wave',
-      'Writing', 'Tired', 'Sweat', 'Dance', 'Yawn',
+      'Writing', 'Tired', 'Sweat', 'Dance', 'Yawn', 'Stretch', 'StretchReach', 'StretchSide', 'StretchFold', 'Celebrate',
     ].sort());
     for (const n of [...IDLE_ANIMS, ...SHOWY_ANIMS, ...ENTER_ANIMS, ...EXIT_ANIMS]) expect(ANIMATIONS[n]).toBeDefined();
     expect(ENTER_ANIMS.length).toBeGreaterThanOrEqual(3);

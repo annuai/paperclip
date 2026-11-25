@@ -1,0 +1,8 @@
+[
+  { "kind": "meeting", "text": "It looks like you have a meeting in {when}: {title}" },
+  { "kind": "meeting", "text": "Heads up! In {when} you have: {title}" },
+  { "kind": "meeting", "text": "It looks like {title} starts in {when}. Time to wrap up?" },
+  { "kind": "meeting", "text": "Psst. {title} begins in {when}. Water? Notes? Camera hair?" },
+  { "kind": "meeting", "text": "Your calendar says {title} is in {when}. I just deliver the news." },
+  { "kind": "meeting", "text": "It looks like you're about to be in a meeting: {title}, in {when}." }
+]

@@ -24,6 +24,7 @@ export class Renderer {
   private readonly cache = new Map<Element, Map<string, string>>();
   private last: PoseT | null = null;
   private sleeping = false;
+  private focusText: string | null = null;
   private current: Style;
 
   constructor(private readonly container: HTMLElement, style: Style = DEFAULT_STYLE, private readonly scope: HTMLElement = document.body) {
@@ -55,6 +56,7 @@ export class Renderer {
     const innerOf = (k: PropKey) => this.els[k].firstElementChild as SVGElement;
     this.inner = { pencil: innerOf('pencil'), bulb: innerOf('bulb'), question: innerOf('question'), sparkles: innerOf('sparkles'), glass: innerOf('glass'), sweat: innerOf('sweat') };
     this.setSleeping(this.sleeping);
+    this.setFocus(this.focusText);
   }
 
   private set(el: Element, name: string, value: string): void {
@@ -129,6 +131,15 @@ export class Renderer {
   setSleeping(on: boolean): void {
     this.sleeping = on;
     this.container.querySelector('.zzz')?.classList.toggle('on', on);
+  }
+
+  /** Focus timer prop on the mat: the whole minutes left as text, or null to put it away. */
+  setFocus(minutes: string | null): void {
+    this.focusText = minutes;
+    const el = this.els.focusTimer;
+    if (!el) return;
+    el.style.display = minutes === null ? 'none' : '';
+    if (minutes !== null && this.els.focusLabel) this.els.focusLabel.textContent = minutes;
   }
 
   private renderProp(k: PropKey, s: PropState): void {

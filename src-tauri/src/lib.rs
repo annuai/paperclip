@@ -1,3 +1,4 @@
+mod calendar;
 mod clickthrough;
 mod session;
 mod system;
@@ -27,6 +28,10 @@ pub fn run() {
             clickthrough::set_eye_follow,
             tray::sync_tray,
             system::get_system,
+            calendar::calendar_status,
+            calendar::calendar_supported,
+            calendar::calendar_request_access,
+            calendar::calendar_set_enabled,
             quit_app,
             debug_hit
         ])
@@ -37,6 +42,7 @@ pub fn run() {
             clickthrough::spawn_poller(app.handle().clone());
             session::start(app.handle());
             system::start(app.handle());
+            calendar::start(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -71,4 +71,18 @@ describe('Agent', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(n).toBe(1);
   });
+
+  it('speakAnimated plays the named animation, lets it finish, and reports the balloon result', async () => {
+    const { agent, log } = setup();
+    const r = await agent.speakAnimated('reach up', 'StretchReach');
+    expect(r).toBe('done');
+    expect(log).toEqual(['play:StretchReach', 'speak:reach up']); // no exit(): the pose plays out on its own
+  });
+
+  it('epoch changes on every interrupt', () => {
+    const { agent } = setup();
+    const e = agent.epoch;
+    agent.interrupt();
+    expect(agent.epoch).toBe(e + 1);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULTS, parseSettings, parseWater } from './settingsParse';
+import { DEFAULTS, parseFocus, parseSettings, parseStretch, parseWater } from './settingsParse';
 import { normalizeStyle } from '../art/style';
 
 describe('style persistence', () => {
@@ -58,5 +58,31 @@ describe('presence settings', () => {
   });
   it('does not disturb the other settings', () => {
     expect(parseSettings({ hideWhenPresenting: false, quiet: true, style: 'flat' })).toMatchObject({ quiet: true, style: 'flat', greetOnUnlock: true });
+  });
+});
+
+describe('wellbeing settings', () => {
+  it('defaults: stretch on every 60 min, no focus session, meeting heads-up off', () => {
+    expect(DEFAULTS.stretch).toEqual({ enabled: true, everyMin: 60 });
+    expect(DEFAULTS.focus).toBeNull();
+    expect(DEFAULTS.meetingHeadsUp).toBe(false);
+    const s = parseSettings({});
+    expect(s.stretch).toEqual({ enabled: true, everyMin: 60 });
+    expect(s.meetingHeadsUp).toBe(false);
+  });
+  it('round-trips valid stretch values and rejects junk', () => {
+    expect(parseStretch({ enabled: false, everyMin: 30 })).toEqual({ enabled: false, everyMin: 30 });
+    expect(parseStretch({ enabled: true, everyMin: 75 }).everyMin).toBe(60);
+    expect(parseStretch('nope')).toEqual({ enabled: true, everyMin: 60 });
+  });
+  it('meeting heads-up is only on when explicitly true', () => {
+    expect(parseSettings({ meetingHeadsUp: true }).meetingHeadsUp).toBe(true);
+    expect(parseSettings({ meetingHeadsUp: 'yes' }).meetingHeadsUp).toBe(false);
+  });
+  it('keeps a stored focus end time and drops garbage', () => {
+    expect(parseFocus({ endsAt: 1700000000000, minutes: 25 })).toEqual({ endsAt: 1700000000000, minutes: 25 });
+    expect(parseFocus({ endsAt: 'soon', minutes: 25 })).toBeNull();
+    expect(parseFocus({ endsAt: 5, minutes: -1 })).toBeNull();
+    expect(parseFocus(null)).toBeNull();
   });
 });

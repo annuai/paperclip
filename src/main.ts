@@ -4,22 +4,29 @@ import { HIDDEN } from './anim/pose';
 import { Agent } from './agent/agent';
 import { DizzyDetector, DIZZY_IDLE_MS } from './agent/dizzy';
 import type { Style } from './art/style';
-import { HydrationScheduler, INTERVAL_OPTIONS } from './agent/hydration';
+import { HydrationScheduler } from './agent/hydration';
 import type { IntervalMin } from './agent/hydration';
 import { DEFAULT_SLEEP, SleepController } from './agent/sleep';
 import { Presence } from './agent/presence';
+import { FocusTimer, focusLabel } from './agent/focus';
+import { MeetingAlerts, meetingLine } from './agent/meeting';
+import type { CalEvent } from './agent/meeting';
+import { SAMPLE_EVERY_MS, StretchBreaks, runGuided } from './agent/stretch';
+import type { StretchMin } from './agent/stretch';
 import type { PresenceCtx, Reaction } from './agent/presence';
 import { DEFAULT_SCHEDULER, IdleScheduler } from './agent/scheduler';
 import { Renderer } from './art/renderer';
 import { LocalContentProvider } from './content/provider';
 import type { ContentKind, ContentProvider } from './content/provider';
 import { loadSettings, restorePosition, saveSettings, trackPosition } from './platform/settings';
-import { getDebugHit, getSystem, onCursor, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import { calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import type { SystemInfo } from './platform/tauri';
 import { WelcomeBack, WelcomeLines } from './agent/welcomeBack';
 import { EyeFollow, EyeTracker, characterClick, computeTarget } from './agent/eyeFollow';
 import type { Pose } from './anim/pose';
 import { Balloon } from './ui/balloon';
 import { ContextMenu } from './ui/contextMenu';
+import { buildMenu } from './ui/menuModel';
 import type { MenuItem } from './ui/contextMenu';
 import { HitRects } from './ui/hitRects';
 import { attachInteraction } from './ui/interaction';
@@ -43,6 +50,8 @@ async function boot(): Promise<void> {
   let greetOnUnlock = settings.greetOnUnlock;
   let hideWhenPresenting = settings.hideWhenPresenting;
   let reactToMusic = settings.reactToMusic;
+  let meetingHeadsUp = settings.meetingHeadsUp;
+  let calendarOk = false; // macOS only: set once the platform answers, hides the Meeting heads-up toggle elsewhere
 
   const charEl = document.getElementById('character') as HTMLElement;
   let style: Style = settings.style;
@@ -128,13 +137,14 @@ async function boot(): Promise<void> {
         if (!sleep.maybeIdleSleep()) void agent.play(presence.idleAnim(presenceCtx()) ?? pick(Math.random, IDLE_ANIMS));
       },
       talk: () => void speakRandom(),
-      // Eye-follow pauses idle animations and chatter, but blinks continue.
-      isBusy: (kind) => agent.busy || balloon.visible || menu.visible || sleep.sleeping || (follow.active && kind !== 'blink'),
+      // Eye-follow and focus mode pause idle animations and chatter; blinks continue.
+      isBusy: (kind) => agent.busy || balloon.visible || menu.visible || sleep.sleeping || ((follow.active || focus.active) && kind !== 'blink'),
     },
   );
 
   // Water reminders: independent of quiet mode; persisted cadence + daily glass count.
   let reminderOpen = false;
+  let stretchOpen = false; // a stretch offer or guided stretch is on screen
   let reminderWait: Promise<void> = Promise.resolve(); // resolves when no reminder is open (welcome-back queues behind it)
   let reminderRelease: () => void = () => undefined;
   const persistWater = () => void saveSettings({ water: { ...hydration.config, ...hydration.snapshot } });
@@ -166,12 +176,147 @@ async function boot(): Promise<void> {
           reminderRelease();
         }
       },
-      isHidden: () => agent.hidden,
-      isBlocked: () => reminderOpen || balloon.visible || menu.visible,
+      // Scheduled reminders wait while he is hidden or a focus session runs (they retry every minute);
+      // "Remind me now" ignores isHidden, so an explicit request still works during focus.
+      isHidden: () => agent.hidden || focus.active,
+      isBlocked: () => reminderOpen || stretchOpen || balloon.visible || menu.visible,
       save: () => persistWater(),
     },
   );
   hydration.onChange(() => sync());
+
+  // ---- Wellbeing: stretch breaks, focus timer, meeting heads-up ----
+  let lastSnap: SystemInfo | undefined; // latest Rust snapshot (idle time, full screen)
+  const meetings = new MeetingAlerts();
+  const stretch = new StretchBreaks(settings.stretch);
+  const persistStretch = () => void saveSettings({ stretch: stretch.config });
+  let lastFocusMin = settings.focus?.minutes ?? 25;
+  const focus: FocusTimer = new FocusTimer({
+    onTick: (m) => {
+      renderer.setFocus(focusLabel(m));
+      sync();
+    },
+    onDone: () => void finishFocus(),
+    save: (s) => void saveSettings({ focus: s }),
+  });
+  const focusLeft = (): number | null => (focus.active ? focus.minutesLeft() : null);
+
+  const offerStretch = async (): Promise<void> => {
+    stretchOpen = true;
+    try {
+      follow.end('interrupt');
+      agent.interrupt();
+      await agent.play('Stretch');
+      const item = await content.next('stretch');
+      const choice = await agent.ask(item.text, [
+        { id: 'stretch', label: 'Stretch with me' },
+        { id: 'later', label: 'Later' },
+      ]);
+      if (choice !== 'stretch') { // Later, closed, or the 2 minute auto-dismiss
+        stretch.later(Date.now());
+        return;
+      }
+      stretch.completed();
+      const epoch = agent.epoch;
+      let cut = false;
+      const finished = await runGuided(
+        async (step) => { if ((await agent.speakAnimated(step.line, step.anim)) === 'closed') cut = true; },
+        () => cut || agent.epoch !== epoch, // a click, a hide or another feature taking over ends the sequence
+      );
+      if (finished) {
+        void agent.play('Congratulate');
+        const done = await content.next('stretchDone');
+        void agent.speak(done.text);
+      }
+    } finally {
+      stretchOpen = false;
+    }
+  };
+
+  // Once a minute: read the idle time, count active minutes, and offer a stretch when one is due.
+  const stretchTick = async (): Promise<void> => {
+    const s = await getSystem();
+    if (!s) return;
+    lastSnap = s;
+    const now = Date.now();
+    stretch.sample(s.idleSecs, now);
+    if (stretch.due({
+      now, hidden: agent.hidden, quiet, focus: focus.active, presenting: lastSnap.fullscreen,
+      reminder: reminderOpen, busy: agent.busy || balloon.visible || menu.visible || sleep.sleeping || follow.active,
+    })) await offerStretch();
+  };
+
+  const startFocus = async (minutes: number): Promise<void> => {
+    user();
+    lastFocusMin = minutes;
+    focus.start(minutes);
+    renderer.setFocus(focusLabel(focus.minutesLeft()));
+    sync();
+    if (agent.hidden) return; // the timer runs; he just is not there to hold it
+    const item = await content.next('focusStart');
+    await agent.speak(item.text);
+  };
+  const stopFocus = (): void => {
+    focus.stop();
+    renderer.setFocus(null);
+    sync();
+  };
+  const finishFocus = async (): Promise<void> => {
+    renderer.setFocus(null);
+    sync();
+    if (agent.hidden) return; // hidden (or presenting): stay out of the way
+    try {
+      follow.end('interrupt');
+      if (sleep.sleeping) await sleep.wake('reminder');
+      agent.interrupt();
+      await agent.play('Celebrate');
+      const item = await content.next('focusDone');
+      const choice = await agent.ask(item.text, [
+        { id: 'break', label: 'Take a break' },
+        { id: 'again', label: 'Another round' },
+      ]);
+      if (choice === 'again') await startFocus(lastFocusMin);
+      else if (choice === 'break') await speakKind('focusBreak');
+    } catch (e) {
+      console.warn('focus finish failed', e);
+    }
+  };
+
+  // Meeting heads-up: Rust polls EventKit once a minute; this decides what to say and says each meeting once.
+  const handleMeetings = async (events: CalEvent[]): Promise<void> => {
+    if (!meetingHeadsUp || agent.hidden) return; // hidden: nothing is consumed, the next poll tries again
+    const now = Date.now();
+    const due = meetings.peek(events, now);
+    if (!due.length) return;
+    if (reminderOpen || stretchOpen || menu.visible) return; // retry on the next poll, the window is 5 min wide
+    meetings.markFired(due);
+    // Not silenced by quiet or focus mode: the user switched this on to be told about meetings.
+    follow.end('interrupt');
+    if (sleep.sleeping) await sleep.wake('reminder');
+    agent.interrupt();
+    void agent.play('GetAttention');
+    const item = await content.next('meeting');
+    await agent.speak(meetingLine(due, now, item.text));
+  };
+
+  const setMeeting = async (on: boolean): Promise<void> => {
+    if (on) {
+      // The one place that may trigger macOS's calendar prompt.
+      const access = await calendarRequestAccess();
+      if (access !== 'granted') {
+        meetingHeadsUp = false;
+        void saveSettings({ meetingHeadsUp });
+        sync();
+        user();
+        await agent.speak("I can't see your calendar, so no meeting heads-ups. You can allow it in System Settings, Privacy & Security, Calendars.");
+        return;
+      }
+    }
+    meetingHeadsUp = on;
+    await calendarSetEnabled(on);
+    void saveSettings({ meetingHeadsUp });
+    sync();
+  };
 
   // Eye-follow: a single click on the clip makes his eyes track the cursor anywhere on screen (the Rust
   // poller streams the global cursor while this is on). The overlay is applied by the animator on every
@@ -244,7 +389,12 @@ async function boot(): Promise<void> {
       enabled: hydration.config.enabled,
       intervalMin: hydration.config.intervalMin,
       glasses: hydration.glassesToday,
-    }, greetOnUnlock, { hidePresenting: hideWhenPresenting, music: reactToMusic });
+    }, greetOnUnlock, { hidePresenting: hideWhenPresenting, music: reactToMusic }, {
+      stretchEnabled: stretch.config.enabled,
+      stretchInterval: stretch.config.everyMin,
+      focusLeft: focusLeft(),
+      meeting: meetingHeadsUp,
+    });
   sleep.onChange(() => {
     if (sleep.sleeping) follow.end('sleep');
     sync();
@@ -299,7 +449,7 @@ async function boot(): Promise<void> {
   const presenceCtx = (): PresenceCtx => ({
     now: Date.now(),
     hidden: agent.hidden,
-    quiet,
+    quiet: quiet || focus.active, // focus mode keeps him quiet like quiet mode does
     busy: agent.busy || balloon.visible || menu.visible || sleep.sleeping || reminderOpen || follow.active,
   });
   const runReactions = (reactions: Reaction[]): void => {
@@ -320,14 +470,20 @@ async function boot(): Promise<void> {
   // that had to wait for a quiet moment). 10 s is far above the 1 s polling ceiling and costs nothing while idle.
   const PRESENCE_TICK_MS = 10_000;
   const startPresence = (): void => {
-    void onSystem((s) => runReactions(presence.update(s, presenceCtx()))).catch((e) => console.warn('system listener failed', e));
-    void getSystem().then((s) => { if (s) runReactions(presence.update(s, presenceCtx())); });
-    setInterval(() => runReactions(presence.tick(presenceCtx())), PRESENCE_TICK_MS);
+    void onSystem((s) => { lastSnap = s; runReactions(presence.update(s, presenceCtx())); }).catch((e) => console.warn('system listener failed', e));
+    void getSystem().then((s) => { if (s) { lastSnap = s; runReactions(presence.update(s, presenceCtx())); } });
+    setInterval(() => {
+      runReactions(presence.tick(presenceCtx()));
+      focus.check(); // catches the wake-up after sleep within seconds (no-op unless a session runs)
+    }, PRESENCE_TICK_MS);
+    setInterval(() => void stretchTick(), SAMPLE_EVERY_MS); // one getSystem() call a minute
   };
 
   async function runCommand(id: string, checked?: boolean): Promise<void> {
     try {
-      if (sleep.sleeping && !['nap', 'tray-click', 'style-classic', 'style-flat', 'quit', 'hide', 'toggle', 'quiet', 'greet'].includes(id) && !id.startsWith('water-') && !id.startsWith('presence-')) await sleep.wake('command');
+      const settingOnly = ['nap', 'tray-click', 'style-classic', 'style-flat', 'quit', 'hide', 'toggle', 'quiet', 'greet', 'meeting', 'focus-stop', 'stretch-enabled'].includes(id)
+        || id.startsWith('water-') || id.startsWith('presence-') || (id.startsWith('stretch-') && id !== 'stretch-now');
+      if (sleep.sleeping && !settingOnly) await sleep.wake('command');
       switch (id) {
         case 'style-classic':
         case 'style-flat':
@@ -349,6 +505,35 @@ async function boot(): Promise<void> {
         case 'water-now':
           user();
           await hydration.remindNow();
+          return;
+        case 'stretch-enabled':
+          stretch.setConfig({ enabled: checked ?? !stretch.config.enabled });
+          persistStretch();
+          sync();
+          return;
+        case 'stretch-30':
+        case 'stretch-45':
+        case 'stretch-60':
+        case 'stretch-90':
+          stretch.setConfig({ everyMin: Number(id.slice(8)) as StretchMin });
+          persistStretch();
+          sync();
+          return;
+        case 'stretch-now':
+          user();
+          await offerStretch();
+          return;
+        case 'focus-15':
+        case 'focus-25':
+        case 'focus-45':
+        case 'focus-60':
+          await startFocus(Number(id.slice(6)));
+          return;
+        case 'focus-stop':
+          stopFocus();
+          return;
+        case 'meeting':
+          await setMeeting(checked ?? !meetingHeadsUp);
           return;
         case 'tray-click':
           // Left click on the tray icon: summon if hidden, otherwise poke (never hides).
@@ -427,41 +612,19 @@ async function boot(): Promise<void> {
     }
   }
 
-  const menuItems = (): MenuItem[] => [
-    { id: 'hi', label: 'Say hi' },
-    { id: 'joke', label: 'Tell a joke' },
-    { id: 'quote', label: 'Give a quote' },
-    { id: 'tip', label: 'Give me a tip' },
-    { id: 'animate', label: 'Animate!' },
-    { id: 'nap', label: sleep.sleeping ? 'Wake up' : 'Take a nap' },
-    { id: 'quiet', label: 'Quiet mode', checked: quiet, separatorBefore: true },
-    { id: 'greet', label: 'Greet me when I unlock', checked: greetOnUnlock },
-    {
-      id: 'presence', label: 'Presence',
-      children: [
-        { id: 'presence-hide', label: 'Hide when presenting', role: 'checkbox', checked: hideWhenPresenting },
-        { id: 'presence-music', label: 'Dance to music', role: 'checkbox', checked: reactToMusic },
-      ],
-    },
-    {
-      id: 'style', label: 'Style', separatorBefore: false,
-      children: [
-        { id: 'style-classic', label: 'Classic', role: 'radio', checked: style === 'classic' },
-        { id: 'style-flat', label: 'Flat', role: 'radio', checked: style === 'flat' },
-      ],
-    },
-    {
-      id: 'water', label: 'Water reminders',
-      children: [
-        { id: 'water-enabled', label: 'Remind me', role: 'checkbox', checked: hydration.config.enabled },
-        ...INTERVAL_OPTIONS.map((n) => ({ id: `water-${n}`, label: `Every ${n} min`, role: 'radio' as const, checked: hydration.config.intervalMin === n })),
-        { id: 'water-now', label: 'Remind me now', separatorBefore: true },
-        { id: 'water-info', label: `Today: ${hydration.glassesToday} ${hydration.glassesToday === 1 ? 'glass' : 'glasses'}`, disabled: true },
-      ],
-    },
-    { id: 'hide', label: 'Hide', separatorBefore: true },
-    { id: 'quit', label: 'Quit' },
-  ];
+  const menuItems = (): MenuItem[] => buildMenu({
+    sleeping: sleep.sleeping,
+    quiet,
+    greetOnUnlock,
+    hideWhenPresenting,
+    reactToMusic,
+    style,
+    water: { enabled: hydration.config.enabled, intervalMin: hydration.config.intervalMin, glassesToday: hydration.glassesToday },
+    stretch: stretch.config,
+    focusLeft: focusLeft(),
+    calendarSupported: calendarOk,
+    meetingHeadsUp,
+  });
 
   const jumps = new JumpCombo(agent);
   const hitTarget = characterHitTarget(charEl);
@@ -518,7 +681,7 @@ async function boot(): Promise<void> {
       enabled: () => greetOnUnlock,
       isHidden: () => agent.hidden,
       isAsleep: () => sleep.sleeping,
-      isQuiet: () => quiet,
+      isQuiet: () => quiet || focus.active,
       waitForReminder: () => (reminderOpen ? reminderWait : Promise.resolve()),
       wake: () => sleep.wake('reminder'), // WakeUp without the sleep line
       endFollow: () => follow.end('interrupt'),
@@ -528,7 +691,7 @@ async function boot(): Promise<void> {
     },
     new WelcomeLines(),
   );
-  void onSessionUnlocked((p) => void welcomeBack.onUnlock(p.awaySeconds)).catch((e) => console.warn('unlock listener failed', e));
+  void onSessionUnlocked((p) => { focus.check(); void welcomeBack.onUnlock(p.awaySeconds); }).catch((e) => console.warn('unlock listener failed', e));
 
   // Dizzy: native drags only report window moves, so watch onMoved (physical px -> logical px).
   const dizzy = new DizzyDetector();
@@ -547,6 +710,25 @@ async function boot(): Promise<void> {
       }, DIZZY_IDLE_MS);
     })
     .catch((e) => console.warn('dizzy listener failed', e));
+
+  // Focus survives restarts (and sleep) through its stored end time.
+  if (settings.focus && focus.resume(settings.focus.endsAt, settings.focus.minutes)) {
+    renderer.setFocus(focusLabel(focus.minutesLeft()));
+  }
+  // Meeting heads-up: the toggle only shows where the platform supports it. Boot never prompts: it just
+  // checks the stored permission and quietly switches the feature off if access was taken away.
+  void calendarSupported().then(async (ok) => {
+    calendarOk = ok;
+    if (!ok) return;
+    void onMeetingEvents((evs) => void handleMeetings(evs)).catch((e) => console.warn('meeting listener failed', e));
+    if (!meetingHeadsUp) return;
+    if ((await calendarStatus()) === 'granted') await calendarSetEnabled(true);
+    else {
+      meetingHeadsUp = false;
+      void saveSettings({ meetingHeadsUp });
+    }
+    sync();
+  });
 
   // Startup: restore position, then show (no flash at 0,0).
   await restorePosition(settings.position);

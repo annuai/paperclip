@@ -4,7 +4,7 @@ export const WIRE_PATH =
 /** Element ids the renderer looks up. Every skin must expose all of them (checked by a unit test). */
 export const REQUIRED_IDS = [
   'root', 'shadow', 'body', 'eyes', 'pupilL', 'pupilR', 'lidL', 'lidR', 'browL', 'browR',
-  'pencil', 'bulb', 'question', 'sparkles', 'glass', 'sweat', 'mouth', 'mat', 'matInner', 'matSheet', 'matRoll', 'wireOutline',
+  'pencil', 'bulb', 'question', 'sparkles', 'glass', 'sweat', 'mouth', 'mat', 'matInner', 'matSheet', 'matRoll', 'wireOutline', 'focusTimer', 'focusLabel',
 ] as const;
 
 /** Classic skin: original parametric paperclip (gradients + outlines). Ids are what the renderer grabs. */
@@ -23,6 +23,9 @@ export const PAPERCLIP_SVG_CLASSIC = `<svg id="pc" viewBox="-50 -40 240 290" wid
     <linearGradient id="matRollGrad" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#3f6f7a"/><stop offset="0.45" stop-color="#8fd0cf"/><stop offset="1" stop-color="#3a5f6e"/>
     </linearGradient>
+    <radialGradient id="timerGrad" cx="0.35" cy="0.3" r="0.9">
+      <stop offset="0" stop-color="#f58a74"/><stop offset="1" stop-color="#cf4a36"/>
+    </radialGradient>
     <linearGradient id="glassGrad" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#cfeaf5" stop-opacity="0.85"/><stop offset="0.5" stop-color="#f1fbff" stop-opacity="0.75"/><stop offset="1" stop-color="#b5dcec" stop-opacity="0.85"/>
     </linearGradient>
@@ -42,6 +45,15 @@ export const PAPERCLIP_SVG_CLASSIC = `<svg id="pc" viewBox="-50 -40 240 290" wid
             stroke="rgba(255,255,255,0.13)" stroke-width="1.2" fill="none"/>
       <path d="M -15 202 L 155 202 M -22 212 L 163 212" stroke="rgba(0,0,0,0.10)" stroke-width="1" fill="none"/>
       <path d="M -2 195 L 142 195" stroke="rgba(255,255,255,0.25)" stroke-width="1.4" stroke-linecap="round"/>
+      <g id="focusTimer" style="display:none" transform="translate(127 216) scale(1.2)">
+        <ellipse cx="0" cy="1" rx="17" ry="3.2" fill="rgba(0,0,0,0.25)"/>
+        <ellipse cx="-9" cy="0" rx="3.6" ry="2" fill="#8a2e22"/><ellipse cx="9" cy="0" rx="3.6" ry="2" fill="#8a2e22"/>
+        <rect x="-3.2" y="-37" width="6.4" height="5" rx="1.6" fill="#8a2e22"/>
+        <circle cy="-17" r="16" fill="url(#timerGrad)" stroke="#8a2e22" stroke-width="1.6"/>
+        <path d="M -11 -26 A 14 14 0 0 1 -2 -31" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" opacity="0.6"/>
+        <circle cy="-17" r="11" fill="#fff8e8" stroke="#8a2e22" stroke-width="0.9"/>
+        <text id="focusLabel" x="0" y="-13.2" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#3a1f1a">25</text>
+      </g>
     </g>
     <g id="matRoll">
       <rect x="-13" y="190" width="26" height="44" rx="12" fill="url(#matRollGrad)" stroke="#34506a" stroke-width="1.5"/>
@@ -121,7 +133,17 @@ export const PAPERCLIP_SVG_FLAT = `<svg id="pc" viewBox="-50 -40 240 290" width=
       <g id="matSheet">
         <path d="M -30 222 H 170 V 224 L 167 227 H -27 L -30 224 Z" fill="#C98A1E"/>
         <path d="M -8 192 L 148 192 L 170 222 L -30 222 Z" fill="#F2B33D"/>
-        <path fill-rule="evenodd" fill="#F7C964" d="M -8 192 L 148 192 L 170 222 L -30 222 Z M -7 195 L 147 195 L 164.3 219 L -24.3 219 Z"/>      </g>
+        <path fill-rule="evenodd" fill="#F7C964" d="M -8 192 L 148 192 L 170 222 L -30 222 Z M -7 195 L 147 195 L 164.3 219 L -24.3 219 Z"/>
+      <g id="focusTimer" style="display:none" transform="translate(127 216) scale(1.2)">
+        <ellipse cx="0" cy="1" rx="17" ry="3" fill="#18202E" fill-opacity="0.16"/>
+        <ellipse cx="-9" cy="0" rx="3.6" ry="2" fill="#18202E"/><ellipse cx="9" cy="0" rx="3.6" ry="2" fill="#18202E"/>
+        <rect x="-3.2" y="-37" width="6.4" height="5" fill="#18202E"/>
+        <circle cy="-17" r="16" fill="#E5705A"/>
+        <path d="M 0 -33 A 16 16 0 0 1 0 -1 Z" fill="#18202E" fill-opacity="0.16"/>
+        <circle cy="-17" r="11" fill="#F4F1EA"/>
+        <text id="focusLabel" x="0" y="-12.8" text-anchor="middle" font-family="Oswald, system-ui, sans-serif" font-size="13" font-weight="600" fill="#18202E">25</text>
+      </g>
+      </g>
       <g id="matRoll">
         <rect x="-13" y="190" width="26" height="44" rx="12" fill="#F2B33D"/>
         <rect x="-13" y="218" width="26" height="16" rx="8" fill="#C98A1E"/>

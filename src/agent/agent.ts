@@ -12,7 +12,7 @@ export interface BalloonLike {
 export interface WindowCtl { show(): Promise<void>; hide(): Promise<void> }
 export type Action =
   | { type: 'play'; name: AnimName; timeoutMs?: number }
-  | { type: 'speak'; text: string; attribution?: string; actions?: BalloonAction[]; result?: (r: string) => void }
+  | { type: 'speak'; text: string; attribution?: string; actions?: BalloonAction[]; anim?: AnimName; result?: (r: string) => void }
   | { type: 'wait'; ms: number }
   | { type: 'show' }
   | { type: 'hide' };
@@ -29,6 +29,7 @@ export class Agent {
   private readonly rng: Rng;
   private queue: QueueItem[] = [];
   private running = false;
+  private interrupts = 0;
   private isHidden = false;
   private idleCbs = new Set<() => void>();
   private waitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,12 +63,30 @@ export class Agent {
         .then(() => { if (!got) resolve('closed'); });
     });
   }
+  /**
+   * Speak while a specific animation plays (instead of the looping Explain), and let it play out even
+   * after the balloon is gone. Resolves with the balloon result ('closed' also means interrupted).
+   * A balloon the user closed cuts the animation short, so a guided sequence can stop on a click.
+   */
+  speakAnimated(text: string, anim: AnimName): Promise<string> {
+    return new Promise<string>((resolve) => {
+      let got = false;
+      void this.enqueue({ type: 'speak', text, anim, result: (r) => { got = true; resolve(r); } })
+        .then(() => { if (!got) resolve('closed'); });
+    });
+  }
   wait(ms: number): Promise<void> { return this.enqueue({ type: 'wait', ms }); }
   show(): Promise<void> { return this.enqueue({ type: 'show' }); }
   hide(): Promise<void> { return this.enqueue({ type: 'hide' }); }
 
+  /** Counts interrupts: a long-running routine can compare it to notice that something else took over. */
+  get epoch(): number {
+    return this.interrupts;
+  }
+
   /** `hard` also halts the current animation immediately (used to wake from the Sleeping loop). */
   interrupt(hard = false): void {
+    this.interrupts++;
     const dropped = this.queue;
     this.queue = [];
     for (const q of dropped) q.resolve();
@@ -130,10 +149,11 @@ export class Agent {
         return;
       }
       case 'speak': {
-        const explain = this.animator.play(this.animations.Explain);
+        const explain = this.animator.play(this.animations[a.anim ?? 'Explain']);
         const r = await this.balloon.speak(a.text, a.attribution, a.actions);
         a.result?.(r);
-        this.animator.exit();
+        // Explain loops until told to stop; a named animation plays out, unless the balloon was closed on it.
+        if (!a.anim || r === 'closed') this.animator.exit();
         await explain;
         return;
       }

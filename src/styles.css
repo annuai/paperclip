@@ -55,8 +55,8 @@ html, body {
   background: #f6f6f6; border: 1px solid #8a8a8a; border-radius: 6px;
   font-size: 13px; color: #222; z-index: 10;
 }
-.menu:not(.submenu) { max-height: 374px; overflow-y: auto; scrollbar-width: none; }
-.menu:not(.submenu)::-webkit-scrollbar { display: none; }
+.menu { max-height: 374px; overflow-y: auto; scrollbar-width: none; }
+.menu::-webkit-scrollbar { display: none; }
 .menu .item { height: 26px; line-height: 26px; padding: 0 12px; display: flex; justify-content: space-between; box-sizing: border-box; }
 .menu .item:hover { background: #2f7de1; color: #fff; }
 .menu .sep { height: 1px; background: #cfcfcf; margin: 3px 0; }
@@ -77,7 +77,8 @@ html, body {
 .menu .chk { display: inline-flex; align-items: center; }
 .menu .chk svg { display: none; }
 .menu .chk[data-on]::before { content: "\2713"; }
-.menu .has-sub .chk svg { display: block; }
+.menu .has-sub .chk svg, .menu .back .chk svg { display: block; }
+.menu .item.back { justify-content: flex-start; gap: 7px; font-weight: 600; }
 .menu .item.active { background: #2f7de1; color: #fff; }
 .menu .item:focus { outline: none; }
 .balloon-close { display: none; }

@@ -58,3 +58,36 @@ describe('Renderer.setStyle', () => {
     expect(c.querySelector('.zzz')?.classList.contains('on')).toBe(true);
   });
 });
+
+describe('focus timer prop', () => {
+  it('both skins draw it on the mat, hidden by default, with a label', () => {
+    for (const svg of [PAPERCLIP_SVG_CLASSIC, PAPERCLIP_SVG_FLAT]) {
+      const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+      const t = doc.getElementById('focusTimer');
+      expect(t?.getAttribute('style')).toContain('display:none');
+      expect(doc.getElementById('matSheet')?.contains(t ?? null)).toBe(true);
+      expect(doc.getElementById('focusLabel')?.tagName).toBe('text');
+    }
+  });
+  it('setFocus shows the minutes, hides on null and survives a style swap', () => {
+    const c = document.createElement('div');
+    document.body.append(c);
+    const r = new Renderer(c, 'classic');
+    const shown = () => (c.querySelector('#focusTimer') as SVGElement).style.display !== 'none';
+    expect(shown()).toBe(false);
+    r.setFocus('24');
+    expect(shown()).toBe(true);
+    expect(c.querySelector('#focusLabel')?.textContent).toBe('24');
+    r.setStyle('flat');
+    expect(shown()).toBe(true);
+    expect(c.querySelector('#focusLabel')?.textContent).toBe('24');
+    r.setFocus(null);
+    expect(shown()).toBe(false);
+  });
+  it('flat timer uses only palette tokens (no gradients)', () => {
+    const t = PAPERCLIP_SVG_FLAT.slice(PAPERCLIP_SVG_FLAT.indexOf('id="focusTimer"'), PAPERCLIP_SVG_FLAT.indexOf('</text>'));
+    const hexes = new Set((t.match(/#[0-9A-Fa-f]{6}/g) ?? []).map((h) => h.toUpperCase()));
+    for (const h of hexes) expect(['#18202E', '#E5705A', '#F4F1EA'], h).toContain(h);
+    expect(t).not.toMatch(/url\(|Gradient|stroke="#/);
+  });
+});
