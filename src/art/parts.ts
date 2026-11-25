@@ -4,7 +4,7 @@ export const WIRE_PATH =
 /** Element ids the renderer looks up. Every skin must expose all of them (checked by a unit test). */
 export const REQUIRED_IDS = [
   'root', 'shadow', 'body', 'eyes', 'pupilL', 'pupilR', 'lidL', 'lidR', 'browL', 'browR',
-  'pencil', 'bulb', 'question', 'sparkles', 'glass', 'sweat', 'mouth', 'mat', 'matInner', 'matSheet', 'matRoll', 'wireOutline', 'focusTimer', 'focusLabel',
+  'pencil', 'bulb', 'question', 'sparkles', 'glass', 'sweat', 'mouth', 'mat', 'matInner', 'matSheet', 'matRoll', 'wireOutline', 'focusTimer', 'focusLabel', 'outfit',
 ] as const;
 
 /** Classic skin: original parametric paperclip (gradients + outlines). Ids are what the renderer grabs. */
@@ -83,6 +83,7 @@ export const PAPERCLIP_SVG_CLASSIC = `<svg id="pc" viewBox="-50 -40 240 290" wid
         <g id="browR"><path d="M -10 0 Q 0 -5 10 2" fill="none" stroke="#2b2f36" stroke-width="5.5" stroke-linecap="round"/></g>
       </g>
       <ellipse id="mouth" cx="0" cy="0" rx="6" ry="6" fill="#3a1f2b" stroke="#2b2f36" stroke-width="1.5"/>
+      <g id="outfit"></g>
       <g id="glass"><g>
         <path d="M -9 -12 L 9 -12 L 7 12 Q 7 13.5 5.5 13.5 L -5.5 13.5 Q -7 13.5 -7 12 Z" fill="url(#glassGrad)" stroke="#5b7f91" stroke-width="1.2" stroke-linejoin="round"/>
         <path d="M -8.1 -3 L 8.1 -3 L 6.9 11.6 Q 6.8 12.6 5.6 12.6 L -5.6 12.6 Q -6.8 12.6 -6.9 11.6 Z" fill="url(#waterGrad)"/>
@@ -172,6 +173,7 @@ export const PAPERCLIP_SVG_FLAT = `<svg id="pc" viewBox="-50 -40 240 290" width=
         <g id="browR"><path d="M -10 0 Q 0 -5 10 2" fill="none" stroke="#F4F1EA" stroke-width="9.5" stroke-linecap="round"/><path d="M -10 0 Q 0 -5 10 2" fill="none" stroke="#18202E" stroke-width="7" stroke-linecap="round"/></g>
       </g>
       <g id="mouth"><ellipse cx="0" cy="0" rx="8.5" ry="8.5" fill="#F4F1EA"/><ellipse cx="0" cy="0" rx="6" ry="6" fill="#18202E"/><ellipse cx="0" cy="3.2" rx="3.4" ry="2.2" fill="#E5705A"/></g>
+      <g id="outfit"></g>
       <g id="glass"><g>
         <path d="M -9 -12 L 9 -12 L 7 13 L -7 13 Z" fill="#8394AB"/>
         <path d="M -7.6 -10.6 L 7.6 -10.6 L 5.9 10.4 L -5.9 10.4 Z" fill="#F4F1EA"/>

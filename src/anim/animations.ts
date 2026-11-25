@@ -297,6 +297,23 @@ export const ANIMATIONS: Record<AnimName, Animation> = {
     f(160, P(body({ tilt: -6, x: -3 }), brows(-6), lids(0.35), prop('sparkles', { rot: 250 }))),
     f(260, P(brows(-5), lids(0.4), prop('sparkles', { rot: 290 }))),
     f(200, {}) ] },
+  // ---- Play (phase 3): all end at NEUTRAL ----
+  Fling: { frames: [ // thrown: a startled "whoa" as he leaves the pointer (~0.5 s)
+    f(90, P(brows(-9), mouth(0.7), { eyes: { sx: 1.12, sy: 1.12 } }, body({ tilt: -14, squash: 1.1 }), look(0, -0.4))),
+    f(260, P(brows(-8), mouth(0.5), { eyes: { sx: 1.08, sy: 1.08 } }, body({ tilt: -9, squash: 1.05 }))),
+    f(160, {}) ] },
+  Thud: { frames: [ // landed on the floor or ceiling: squash flat, wobble back (~0.25 s)
+    f(55, P(body({ squash: 0.76, y: 3 }), brows(4), lids(0.4), mat({ squash: 0.9 })), { ease: 'out' }),
+    f(100, P(body({ squash: 1.1, y: -3 }), brows(-3), mouth(0.25), mat({ squash: 1.02 }))),
+    f(90, {}) ] },
+  Bump: { frames: [ // hit a side wall: squeezed narrow and tall, wobble back (~0.25 s)
+    f(55, P(body({ squash: 1.16, tilt: 6 }), brows(4), lids(0.4)), { ease: 'out' }),
+    f(100, P(body({ squash: 0.92, tilt: -5 }), brows(-3), mouth(0.25))),
+    f(90, {}) ] },
+  Ooh: { useExitBranching: true, frames: [ // a file is being dragged over him: leans in, eyes wide, small "o" (loops until the drag ends)
+    f(240, P(body({ tilt: 7, squash: 0.97 }), brows(-9), { eyes: { sx: 1.14, sy: 1.14 } }, mouth(0.35), look(0, 0.55)), { ease: 'out' }),
+    f(700, P(body({ tilt: 6, squash: 0.96 }), brows(-8), { eyes: { sx: 1.12, sy: 1.12 } }, mouth(0.3), look(0, 0.6)), loop(1, 2)),
+    f(200, {}) ] },
   Jump: { frames: [
     f(80,  P(body({ squash: 0.8, y: 4 }), brows(3), lids(0.25), mat({ squash: 0.88 }))),                     // crouch, mat dips
     f(130, P(body({ squash: 1.2, y: -40 }), brows(-9), mouth(0.6), mat({ squash: 1.04 })), { ease: 'out' }), // launch, mat springs back

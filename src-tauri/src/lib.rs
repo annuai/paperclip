@@ -1,5 +1,6 @@
 mod calendar;
 mod clickthrough;
+mod files;
 mod session;
 mod system;
 mod tray;
@@ -22,7 +23,14 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_opener::init())
         .manage(std::sync::Arc::new(clickthrough::HitState::default()))
+        .manage(files::DropState::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(e) = event {
+                files::handle_drag_drop(window, e);
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             clickthrough::set_hit_rects,
             clickthrough::set_eye_follow,
@@ -32,6 +40,9 @@ pub fn run() {
             calendar::calendar_supported,
             calendar::calendar_request_access,
             calendar::calendar_set_enabled,
+            files::zip_dropped,
+            files::clear_dropped,
+            files::reveal_zip,
             quit_app,
             debug_hit
         ])

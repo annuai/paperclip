@@ -14,6 +14,8 @@ colors:
   bulb-glow: "#FFE27A"
   bulb-shade: "#F7CF55"
   menu-divider: "#2A3446"
+  clover: "#5FA36B"
+  clover-shade: "#3F7A4D"
 typography:
   balloon:
     fontFamily: "Oswald, system-ui, sans-serif"
@@ -112,6 +114,9 @@ A restrained steel, ink, and marigold palette; Coral appears only as a tiny acce
 **The Socket Rule.** Eye whites sit in a Steel-shade (#5F7088) socket ellipse (rx 14, ry 16) behind Paper (rx 11.5, ry 13.5), so they hold on any wallpaper without outline strokes.
 **The Paper Keyline Rule.** Brows (9.5 Paper under 7 Ink) and mouth (Paper rim r8.5 around Ink r6) carry a Paper underlay so dark wallpapers do not swallow Ink features.
 **The Rare Coral Rule.** Coral is tongue and eraser only.
+
+### Seasonal outfits (src/art/outfitArt.ts)
+Outfits live inside the body group and follow the head. Same rules as everything else: solid fills, no outlines, one base plus one hard shade (ink at 16 %). Two exceptions, scoped to outfits only: **Coral** is also the Santa hat, party stripe and heart, and **Clover** (#5FA36B, shade #3F7A4D) exists for the shamrock and the pumpkin stem. The pumpkin is Marigold with an Ochre shade; its face is Ink.
 
 ## Typography
 

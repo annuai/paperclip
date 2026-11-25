@@ -4,7 +4,7 @@ import type { MenuState } from './menuModel';
 import type { MenuItem } from './contextMenu';
 
 const base: MenuState = {
-  sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, style: 'classic',
+  sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, outfits: true, style: 'classic',
   water: { enabled: true, intervalMin: 45, glassesToday: 2 },
   stretch: { enabled: true, everyMin: 60 }, focusLeft: null, calendarSupported: true, meetingHeadsUp: false,
 };
@@ -24,6 +24,13 @@ describe('main menu', () => {
       ['water-enabled', 'water-30', 'water-45', 'water-60', 'water-90', 'water-now', 'water-info']);
     expect(find(buildMenu(base), 'stretch')?.children?.map((c) => c.id)).toEqual(
       ['stretch-enabled', 'stretch-30', 'stretch-45', 'stretch-60', 'stretch-90', 'stretch-now']);
+  });
+
+  it('seasonal outfits live in the Style submenu (no new top-level row), as a checkbox', () => {
+    const style = find(buildMenu(base), 'style');
+    expect(style?.children?.map((c) => c.id)).toEqual(['style-classic', 'style-flat', 'style-outfits']);
+    expect(find(buildMenu(base), 'style-outfits')).toMatchObject({ label: 'Seasonal outfits', role: 'checkbox', checked: true });
+    expect(find(buildMenu({ ...base, outfits: false }), 'style-outfits')?.checked).toBe(false);
   });
 
   it('every id is unique (the tray and the menu share them)', () => {

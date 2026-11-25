@@ -86,3 +86,12 @@ describe('wellbeing settings', () => {
     expect(parseFocus(null)).toBeNull();
   });
 });
+
+describe('outfits setting', () => {
+  it('defaults to auto; only an explicit off persists', () => {
+    expect(DEFAULTS.outfits).toBe('auto');
+    expect(parseSettings({}).outfits).toBe('auto');
+    expect(parseSettings({ outfits: 'off' }).outfits).toBe('off');
+    expect(parseSettings({ outfits: 'santa-hat' }).outfits).toBe('auto');
+  });
+});

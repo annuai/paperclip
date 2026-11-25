@@ -6,6 +6,8 @@ import type { StretchConfig } from '../agent/stretch';
 import type { FocusSaved } from '../agent/focus';
 import { DEFAULT_STYLE, normalizeStyle } from '../art/style';
 import type { Style } from '../art/style';
+import { DEFAULT_OUTFIT_SETTING, normalizeOutfitSetting } from '../art/outfits';
+import type { OutfitSetting } from '../art/outfits';
 
 export interface WaterSettings {
   enabled: boolean; // default on
@@ -27,12 +29,13 @@ export interface Settings {
   reactToMusic: boolean; // dance now and then while audio is playing (default on)
   stretch: StretchConfig; // stretch-break nudges (default on, every 60 active minutes)
   focus: FocusSaved | null; // a running focus session's end timestamp (survives sleep and restarts)
+  outfits: OutfitSetting; // seasonal outfits: 'auto' dresses for the date (default), 'off' never
   meetingHeadsUp: boolean; // macOS: say something 5 min before a calendar event (default off, asks for access when turned on)
 }
 
 export const DEFAULT_WATER: WaterSettings = { enabled: true, intervalMin: DEFAULT_INTERVAL, lastReminderAt: null, glasses: 0, glassesDate: '' };
 
-export const DEFAULTS: Settings = { quiet: false, scheduler: {}, position: null, hidden: false, style: DEFAULT_STYLE, water: DEFAULT_WATER, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, stretch: { enabled: true, everyMin: DEFAULT_STRETCH_MIN }, focus: null, meetingHeadsUp: false };
+export const DEFAULTS: Settings = { quiet: false, scheduler: {}, position: null, hidden: false, style: DEFAULT_STYLE, water: DEFAULT_WATER, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, stretch: { enabled: true, everyMin: DEFAULT_STRETCH_MIN }, focus: null, meetingHeadsUp: false, outfits: DEFAULT_OUTFIT_SETTING };
 
 /** Validate raw persisted values (anything can be in the store file) into a Settings object. */
 export function parseSettings(raw: Record<string, unknown>): Settings {
@@ -55,6 +58,7 @@ export function parseSettings(raw: Record<string, unknown>): Settings {
     stretch: parseStretch(raw.stretch),
     focus: parseFocus(raw.focus),
     meetingHeadsUp: raw.meetingHeadsUp === true,
+    outfits: normalizeOutfitSetting(raw.outfits),
   };
 }
 

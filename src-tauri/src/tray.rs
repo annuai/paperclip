@@ -11,6 +11,7 @@ pub struct TrayHandles {
     nap: MenuItem<Wry>,
     style_classic: CheckMenuItem<Wry>,
     style_flat: CheckMenuItem<Wry>,
+    style_outfits: CheckMenuItem<Wry>,
     water_enabled: CheckMenuItem<Wry>,
     water_intervals: Vec<(u32, CheckMenuItem<Wry>)>,
     water_info: MenuItem<Wry>,
@@ -38,7 +39,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let animate = MenuItem::with_id(app, "animate", "Animate!", true, None::<&str>)?;
     let style_classic = CheckMenuItem::with_id(app, "style-classic", "Classic", true, true, None::<&str>)?;
     let style_flat = CheckMenuItem::with_id(app, "style-flat", "Flat", true, false, None::<&str>)?;
-    let style_menu = Submenu::with_items(app, "Style", true, &[&style_classic, &style_flat])?;
+    let style_outfits = CheckMenuItem::with_id(app, "style-outfits", "Seasonal outfits", true, true, None::<&str>)?;
+    let style_sep = PredefinedMenuItem::separator(app)?;
+    let style_menu = Submenu::with_items(app, "Style", true, &[&style_classic, &style_flat, &style_sep, &style_outfits])?;
     let water_enabled = CheckMenuItem::with_id(app, "water-enabled", "Remind me", true, true, None::<&str>)?;
     let mut water_intervals: Vec<(u32, CheckMenuItem<Wry>)> = Vec::new();
     for n in [30u32, 45, 60, 90] {
@@ -121,6 +124,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         nap: nap.clone(),
         style_classic: style_classic.clone(),
         style_flat: style_flat.clone(),
+        style_outfits: style_outfits.clone(),
         water_enabled: water_enabled.clone(),
         water_intervals: water_intervals.clone(),
         water_info: water_info.clone(),
@@ -180,6 +184,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                     let _ = style_classic.set_checked(!flat);
                     let _ = style_flat.set_checked(flat);
                     let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked: Some(true) });
+                }
+                "style-outfits" => {
+                    let checked = style_outfits.is_checked().ok();
+                    let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked });
                 }
                 id if id.starts_with("water-") && id != "water-info" => {
                     if let Some(n) = id.strip_prefix("water-").and_then(|s| s.parse::<u32>().ok()) {
@@ -262,6 +270,7 @@ pub struct TraySync {
     /// Whole minutes left in a running focus session; `None` when no timer is running.
     focus_left: Option<u32>,
     meeting: bool,
+    outfits: bool,
 }
 
 #[tauri::command]
@@ -291,6 +300,7 @@ pub fn sync_tray(app: AppHandle, state: State<'_, TrayHandles>, sync: TraySync) 
     }
     state.focus_stop.set_enabled(sync.focus_left.is_some()).map_err(|e| e.to_string())?;
     state.focus_info.set_text(focus_label(sync.focus_left)).map_err(|e| e.to_string())?;
+    state.style_outfits.set_checked(sync.outfits).map_err(|e| e.to_string())?;
     state.meeting.set_checked(sync.meeting).map_err(|e| e.to_string())?;
     if let Some(tray) = app.tray_by_id("main") {
         // The time left, where the user looks: the tooltip everywhere, plus a short title next to the macOS icon.

@@ -125,3 +125,4 @@ This plan covers ten features. They are built in five phases, one after another,
   - Note: the repo is private, so the endpoint isn't publicly reachable until it's public. Report this.
 - **Homebrew.** `packaging/homebrew/paperclip.rb` is a cask template that points at the release dmg, with the version and sha256 as placeholders, plus a short `packaging/README.md` explaining how to publish a tap.
 - **Leave alone:** don't create repos, push tags or set GitHub secrets. Those belong to the lead, who checks with the user first.
+- Phase 2 note: hardened-runtime release needs entitlement com.apple.security.personal-information.calendars (src-tauri/Entitlements.plist, bundle.macOS.entitlements).

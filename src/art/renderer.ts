@@ -1,6 +1,8 @@
 import type { Pose, PropState } from '../anim/pose';
 import { REQUIRED_IDS, svgFor } from './parts';
 import type { Pose as PoseT } from '../anim/pose';
+import { outfitSvg } from './outfitArt';
+import type { OutfitName } from './outfits';
 import { DEFAULT_STYLE } from './style';
 import type { Style } from './style';
 
@@ -25,6 +27,8 @@ export class Renderer {
   private last: PoseT | null = null;
   private sleeping = false;
   private focusText: string | null = null;
+  private outfitName: OutfitName = 'none';
+  private swing: SVGElement | null = null;
   private current: Style;
 
   constructor(private readonly container: HTMLElement, style: Style = DEFAULT_STYLE, private readonly scope: HTMLElement = document.body) {
@@ -57,6 +61,26 @@ export class Renderer {
     this.inner = { pencil: innerOf('pencil'), bulb: innerOf('bulb'), question: innerOf('question'), sparkles: innerOf('sparkles'), glass: innerOf('glass'), sweat: innerOf('sweat') };
     this.setSleeping(this.sleeping);
     this.setFocus(this.focusText);
+    this.mountOutfit();
+  }
+
+  /** What he is wearing; the art follows the head because it lives inside #body. */
+  setOutfit(name: OutfitName): void {
+    if (name === this.outfitName) return;
+    this.outfitName = name;
+    this.mountOutfit();
+    if (this.last) this.render(this.last);
+  }
+
+  get outfit(): OutfitName {
+    return this.outfitName;
+  }
+
+  private mountOutfit(): void {
+    if (this.swing) this.cache.delete(this.swing);
+    const art = outfitSvg(this.current, this.outfitName);
+    this.els.outfit.innerHTML = art ? `<g id="outfitSwing">${art}</g>` : '';
+    this.swing = art ? this.els.outfit.firstElementChild as SVGElement : null;
   }
 
   private set(el: Element, name: string, value: string): void {
@@ -89,6 +113,8 @@ export class Renderer {
     for (const k of ['pencil', 'bulb', 'question', 'sparkles', 'glass', 'sweat'] as PropKey[]) this.renderProp(k, p.props[k]);
     // Flat skin: the single hard shade run drifts with body tilt so the form still reads as an object.
     if (this.shade) this.set(this.shade, 'transform', `translate(${r(p.body.tilt * 0.08)} 0)`);
+    // The outfit lags the body's tilt a little (it is a loose hat, not part of the wire): swings about its seat on the head.
+    if (this.swing) this.set(this.swing, 'transform', `rotate(${r(-b.tilt * 0.22)} 70 26)`);
     this.renderMouth(p.mouth);
     this.renderMat(p.mat);
   }

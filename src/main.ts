@@ -1,4 +1,4 @@
-import { IDLE_ANIMS, SHOWY_ANIMS } from './anim/animations';
+import { ANIMATIONS, IDLE_ANIMS, SHOWY_ANIMS } from './anim/animations';
 import { Animator } from './anim/animator';
 import { HIDDEN } from './anim/pose';
 import { Agent } from './agent/agent';
@@ -16,10 +16,15 @@ import type { StretchMin } from './agent/stretch';
 import type { PresenceCtx, Reaction } from './agent/presence';
 import { DEFAULT_SCHEDULER, IdleScheduler } from './agent/scheduler';
 import { Renderer } from './art/renderer';
+import { currentOutfit } from './art/outfits';
+import { Thrower } from './agent/thrower';
+import { RELEASE_SILENCE_MS, ROUGH_BOUNCE_SPEED, boundsFor } from './agent/throwPhysics';
+import { dropLine } from './agent/fileDrop';
+import type { FilesDropped } from './platform/tauri';
 import { LocalContentProvider } from './content/provider';
 import type { ContentKind, ContentProvider } from './content/provider';
-import { loadSettings, restorePosition, saveSettings, trackPosition } from './platform/settings';
-import { calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import { loadSettings, locateWindow, restorePosition, saveSettings, savePosition, trackPosition, windowSize } from './platform/settings';
+import { clearDropped, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
 import type { SystemInfo } from './platform/tauri';
 import { WelcomeBack, WelcomeLines } from './agent/welcomeBack';
 import { EyeFollow, EyeTracker, characterClick, computeTarget } from './agent/eyeFollow';
@@ -51,11 +56,15 @@ async function boot(): Promise<void> {
   let hideWhenPresenting = settings.hideWhenPresenting;
   let reactToMusic = settings.reactToMusic;
   let meetingHeadsUp = settings.meetingHeadsUp;
+  let outfitSetting = settings.outfits;
   let calendarOk = false; // macOS only: set once the platform answers, hides the Meeting heads-up toggle elsewhere
 
   const charEl = document.getElementById('character') as HTMLElement;
   let style: Style = settings.style;
   const renderer = new Renderer(charEl, style);
+  // Seasonal outfit: by local date; re-checked on the presence heartbeat so it changes at midnight without a restart.
+  const applyOutfit = () => renderer.setOutfit(currentOutfit(outfitSetting, new Date()));
+  applyOutfit();
   const motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
   const animator = new Animator({ render: (p) => renderer.render(p), reducedMotion: motionQuery.matches });
   motionQuery.addEventListener('change', (e) => { animator.reducedMotion = e.matches; });
@@ -126,7 +135,7 @@ async function boot(): Promise<void> {
       const item = await content.next('sleep');
       await agent.speak(item.text);
     },
-    isBusy: () => agent.busy || balloon.visible || menu.visible || follow.active,
+    isBusy: () => agent.busy || balloon.visible || menu.visible || follow.active || thrower.flying,
   });
 
   const scheduler = new IdleScheduler(
@@ -138,7 +147,7 @@ async function boot(): Promise<void> {
       },
       talk: () => void speakRandom(),
       // Eye-follow and focus mode pause idle animations and chatter; blinks continue.
-      isBusy: (kind) => agent.busy || balloon.visible || menu.visible || sleep.sleeping || ((follow.active || focus.active) && kind !== 'blink'),
+      isBusy: (kind) => agent.busy || balloon.visible || menu.visible || sleep.sleeping || thrower.flying || ((follow.active || focus.active) && kind !== 'blink'),
     },
   );
 
@@ -394,6 +403,7 @@ async function boot(): Promise<void> {
       stretchInterval: stretch.config.everyMin,
       focusLeft: focusLeft(),
       meeting: meetingHeadsUp,
+      outfits: outfitSetting === 'auto',
     });
   sleep.onChange(() => {
     if (sleep.sleeping) follow.end('sleep');
@@ -425,6 +435,7 @@ async function boot(): Promise<void> {
   const hideNow = async (auto = false) => {
     if (!auto) presence.userChangedVisibility();
     follow.end('hide');
+    thrower.cancel();
     sleep.reset();
     sleep.stop();
     hydration.stop();
@@ -474,6 +485,7 @@ async function boot(): Promise<void> {
     void getSystem().then((s) => { if (s) { lastSnap = s; runReactions(presence.update(s, presenceCtx())); } });
     setInterval(() => {
       runReactions(presence.tick(presenceCtx()));
+      applyOutfit();
       focus.check(); // catches the wake-up after sleep within seconds (no-op unless a session runs)
     }, PRESENCE_TICK_MS);
     setInterval(() => void stretchTick(), SAMPLE_EVERY_MS); // one getSystem() call a minute
@@ -481,13 +493,19 @@ async function boot(): Promise<void> {
 
   async function runCommand(id: string, checked?: boolean): Promise<void> {
     try {
-      const settingOnly = ['nap', 'tray-click', 'style-classic', 'style-flat', 'quit', 'hide', 'toggle', 'quiet', 'greet', 'meeting', 'focus-stop', 'stretch-enabled'].includes(id)
+      const settingOnly = ['nap', 'tray-click', 'style-classic', 'style-flat', 'quit', 'hide', 'toggle', 'quiet', 'greet', 'meeting', 'focus-stop', 'stretch-enabled', 'style-outfits'].includes(id)
         || id.startsWith('water-') || id.startsWith('presence-') || (id.startsWith('stretch-') && id !== 'stretch-now');
       if (sleep.sleeping && !settingOnly) await sleep.wake('command');
       switch (id) {
         case 'style-classic':
         case 'style-flat':
           setStyle(id === 'style-flat' ? 'flat' : 'classic');
+          return;
+        case 'style-outfits':
+          outfitSetting = (checked ?? outfitSetting !== 'auto') ? 'auto' : 'off';
+          void saveSettings({ outfits: outfitSetting });
+          applyOutfit();
+          sync();
           return;
         case 'water-enabled':
           hydration.setConfig({ enabled: checked ?? !hydration.config.enabled });
@@ -618,6 +636,7 @@ async function boot(): Promise<void> {
     greetOnUnlock,
     hideWhenPresenting,
     reactToMusic,
+    outfits: outfitSetting === 'auto',
     style,
     water: { enabled: hydration.config.enabled, intervalMin: hydration.config.intervalMin, glassesToday: hydration.glassesToday },
     stretch: stretch.config,
@@ -625,6 +644,50 @@ async function boot(): Promise<void> {
     calendarSupported: calendarOk,
     meetingHeadsUp,
   });
+
+  // Throwing: rAF runs only while he is flying (see agent/thrower.ts). Physics are in physical px on the monitor he is on.
+  let lastBounceAt = 0;
+  const thrower = new Thrower({
+    dpr: () => window.devicePixelRatio || 1,
+    locate: async (pos) => {
+      const [where, size] = await Promise.all([locateWindow(pos), windowSize()]);
+      if (!where || !size) return null;
+      const k = where.scale;
+      // Transparent margins around the drawn clip + mat in the 320x380 window (logical px): he lands ON the work-area edge.
+      return { bounds: boundsFor(where.area, size, { left: 112 * k, right: 20 * k, top: 130 * k, bottom: 12 * k }), scale: k };
+    },
+    setPosition: (x, y) => win.setPosition(x, y),
+    raf: (cb) => requestAnimationFrame(cb),
+    caf: (id) => cancelAnimationFrame(id),
+    onLaunch: () => {
+      follow.end('drag');
+      balloon.close();
+      menu.close();
+      agent.interrupt();
+      scheduler.notifyActivity();
+      sleep.notifyActivity();
+      void animator.play(ANIMATIONS.Fling);
+    },
+    onBounce: (surface, speed) => {
+      const now = performance.now();
+      if (speed < ROUGH_BOUNCE_SPEED || now - lastBounceAt < 90) return; // tiny settles do not squash him
+      lastBounceAt = now;
+      void animator.play(surface === 'left' || surface === 'right' ? ANIMATIONS.Bump : ANIMATIONS.Thud);
+    },
+    onLand: (l) => {
+      void savePosition(); // at rest: persist now (the debounced tracker would also catch it)
+      updateHit();
+      if (!l.rough || agent.hidden) return;
+      void agent.play('Dizzy');
+      void speakKind('dizzy');
+    },
+  });
+  let oohActive = false;
+  const endOoh = () => {
+    if (!oohActive) return;
+    oohActive = false;
+    agent.interrupt();
+  };
 
   const jumps = new JumpCombo(agent);
   const hitTarget = characterHitTarget(charEl);
@@ -647,6 +710,11 @@ async function boot(): Promise<void> {
         void agent.play('Thinking', 900);
         void speakKind('joke');
       },
+      tripleClick: () => {
+        if (sleep.sleeping) { void sleep.wake('doubleClick'); return; }
+        user();
+        void speakKind('quote'); // same as the menu's "Give a quote"
+      },
       contextMenu: (x, y) => {
         scheduler.notifyActivity();
         menu.open(x, y, menuItems());
@@ -660,6 +728,8 @@ async function boot(): Promise<void> {
         jumps.tap();
       },
       dragStart: () => {
+        thrower.beginDrag(); // a drag in progress cancels any flight and starts measuring the release velocity
+        endOoh();
         follow.end('drag');
         if (sleep.sleeping) void sleep.wake('drag');
         sleep.notifyActivity();
@@ -693,23 +763,84 @@ async function boot(): Promise<void> {
   );
   void onSessionUnlocked((p) => { focus.check(); void welcomeBack.onUnlock(p.awaySeconds); }).catch((e) => console.warn('unlock listener failed', e));
 
-  // Dizzy: native drags only report window moves, so watch onMoved (physical px -> logical px).
+  // Native drags only report window moves, so watch onMoved (physical px). Two listeners share the stream:
+  //  - Throw: the silence after the last move is the release; a fast release flings him (see agent/thrower.ts).
+  //  - Dizzy: lots of rough dragging makes him dizzy (a throw takes precedence; it decides dizziness on landing).
   const dizzy = new DizzyDetector();
   let dizzyTimer: ReturnType<typeof setTimeout> | null = null;
+  let throwTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastMoveT = 0;
   void win
     .onMoved((p) => {
       const dpr = window.devicePixelRatio || 1;
-      dizzy.move(p.x / dpr, p.y / dpr, performance.now());
+      const t = performance.now();
+      if (thrower.flying) return; // our own setPosition echoes
+      lastMoveT = t;
+      thrower.move(p.x, p.y, t);
+      if (throwTimer !== null) clearTimeout(throwTimer);
+      throwTimer = setTimeout(() => {
+        throwTimer = null;
+        void thrower.release(lastMoveT + RELEASE_SILENCE_MS).then((thrown) => {
+          if (!thrown) return;
+          if (dizzyTimer !== null) { clearTimeout(dizzyTimer); dizzyTimer = null; }
+          dizzy.reset();
+        });
+      }, RELEASE_SILENCE_MS);
+      dizzy.move(p.x / dpr, p.y / dpr, t);
       if (dizzyTimer !== null) clearTimeout(dizzyTimer);
       dizzyTimer = setTimeout(() => {
         dizzyTimer = null;
-        if (!dizzy.consume(performance.now()) || agent.hidden) return;
+        if (!dizzy.consume(performance.now()) || agent.hidden || thrower.flying) return;
         user();
         void agent.play('Dizzy');
         void speakKind('dizzy');
       }, DIZZY_IDLE_MS);
     })
     .catch((e) => console.warn('dizzy listener failed', e));
+
+  // ---- File drop: Rust owns the paths; here we only react and ask ----
+  const isMac = /Mac/i.test(navigator.platform);
+  const overCharacter = (x: number, y: number): boolean => {
+    const inside = (r: DOMRect) => x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
+    return inside(renderer.characterRect()) || inside(renderer.matRect());
+  };
+  const offerZip = async (d: FilesDropped): Promise<void> => {
+    try {
+      follow.end('interrupt');
+      if (sleep.sleeping) await sleep.wake('command');
+      scheduler.notifyActivity();
+      agent.interrupt();
+      const choice = await agent.ask(dropLine(d), [{ id: 'zip', label: 'Zip it' }, { id: 'no', label: 'No thanks' }]);
+      if (choice !== 'zip') {
+        await clearDropped();
+        if (choice === 'no') await speakKind('zipNo');
+        return;
+      }
+      const name = await zipDropped();
+      await clearDropped();
+      if (!name) { await speakKind('zipFail'); return; }
+      void agent.play('Congratulate');
+      const done = await content.next('zipDone');
+      const next = await agent.ask(done.text, [{ id: 'show', label: isMac ? 'Show in Finder' : 'Show in folder' }, { id: 'ok', label: 'Thanks' }]);
+      if (next === 'show') await revealZip();
+    } catch (e) {
+      console.warn('zip flow failed', e);
+    }
+  };
+  void onFileDrag((e) => {
+    if (e.phase === 'leave' || agent.hidden || sleep.sleeping || thrower.flying || !overCharacter(e.x, e.y)) { endOoh(); return; }
+    if (oohActive) return;
+    oohActive = true;
+    follow.end('interrupt');
+    agent.interrupt();
+    void agent.play('Ooh', 30_000); // loops until the drag leaves or drops; the 30 s is only a safety net
+  }).catch((e) => console.warn('file-drag listener failed', e));
+  void onFilesDropped((d) => {
+    endOoh();
+    // Only a drop on the character counts (the window ignores the pointer elsewhere, but be explicit).
+    if (agent.hidden || !overCharacter(d.x, d.y)) { void clearDropped(); return; }
+    void offerZip(d);
+  }).catch((e) => console.warn('files-dropped listener failed', e));
 
   // Focus survives restarts (and sleep) through its stored end time.
   if (settings.focus && focus.resume(settings.focus.endsAt, settings.focus.minutes)) {

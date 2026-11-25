@@ -11,6 +11,7 @@ import presence from './presence.json';
 import stretch from './stretch.json';
 import focus from './focus.json';
 import meeting from './meeting.json';
+import files from './files.json';
 import { LocalContentProvider, periodOf } from './provider';
 import { mulberry32 } from '../util/rng';
 
@@ -32,7 +33,7 @@ describe('content', () => {
     expect(tips).toHaveLength(20);
   });
   it('texts are non-empty, <=180 chars and unique', () => {
-    [greetings, quotes, jokes, tips, dizzy, sleep, hydration, thanks, presence, stretch, focus, meeting].forEach(valid);
+    [greetings, quotes, jokes, tips, dizzy, sleep, hydration, thanks, presence, stretch, focus, meeting, files].forEach(valid);
     expect(hydration.length).toBeGreaterThanOrEqual(15);
     expect(hydration.every((x) => x.text.length <= 100)).toBe(true); // must fit the balloon with its buttons
     expect(sleep.length).toBeGreaterThanOrEqual(10);
@@ -55,6 +56,13 @@ describe('content', () => {
       expect(lines.every((l) => l.text.length <= 100), k).toBe(true); // offers carry two buttons: keep them short
     }
     expect(of(stretch, 'stretch').filter((l) => l.text.startsWith("It looks like you")).length).toBeGreaterThanOrEqual(4);
+  });
+  it('file lines: variety per kind, balloon-sized', () => {
+    for (const [k, min] of [['zipDone', 5], ['zipFail', 3], ['zipNo', 3]] as const) {
+      const l = files.filter((x) => x.kind === k);
+      expect(l.length, k).toBeGreaterThanOrEqual(min);
+      expect(l.every((x) => x.text.length <= 100), k).toBe(true);
+    }
   });
   it('meeting templates use {when} and {title} exactly once and fit with a 48 char title', () => {
     for (const m of meeting) {

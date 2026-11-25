@@ -10,11 +10,13 @@ import presence from './presence.json';
 import stretch from './stretch.json';
 import focus from './focus.json';
 import meeting from './meeting.json';
+import files from './files.json';
 import { ShuffleBag } from '../util/shuffleBag';
 import type { Rng } from '../util/rng';
 
 export type ContentKind = 'greeting' | 'quote' | 'joke' | 'tip' | 'dizzy' | 'sleep' | 'hydration' | 'thanks' | 'lowBattery' | 'overheating' | 'lateNight'
-  | 'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting';
+  | 'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting'
+  | 'zipDone' | 'zipFail' | 'zipNo';
 export interface ContentItem { kind: ContentKind; text: string; attribution?: string }
 export interface ContentProvider { next(kind: ContentKind, ctx?: { now?: Date }): Promise<ContentItem> }
 
@@ -40,6 +42,8 @@ export class LocalContentProvider implements ContentProvider {
   private readonly presenceBags: Record<'lowBattery' | 'overheating' | 'lateNight', ShuffleBag<string>>;
   private readonly wellbeingBags: Record<'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting', ShuffleBag<string>>;
 
+  private readonly fileBags: Record<'zipDone' | 'zipFail' | 'zipNo', ShuffleBag<string>>;
+
   constructor(rng: Rng = Math.random) {
     const byPeriod = (p: Period) => greetings.filter((g) => g.period === p).map((g) => g.text);
     this.greetingBags = {
@@ -62,6 +66,11 @@ export class LocalContentProvider implements ContentProvider {
       lateNight: new ShuffleBag(ofKind('lateNight'), rng),
     };
     const lines = (xs: { kind: string; text: string }[], k: string) => new ShuffleBag(xs.filter((l) => l.kind === k).map((l) => l.text), rng);
+    this.fileBags = {
+      zipDone: lines(files, 'zipDone'),
+      zipFail: lines(files, 'zipFail'),
+      zipNo: lines(files, 'zipNo'),
+    };
     this.wellbeingBags = {
       stretch: lines(stretch, 'stretch'),
       stretchDone: lines(stretch, 'stretchDone'),
@@ -103,6 +112,10 @@ export class LocalContentProvider implements ContentProvider {
       case 'focusBreak':
       case 'meeting':
         return { kind, text: this.wellbeingBags[kind].next() };
+      case 'zipDone':
+      case 'zipFail':
+      case 'zipNo':
+        return { kind, text: this.fileBags[kind].next() };
     }
   }
 }

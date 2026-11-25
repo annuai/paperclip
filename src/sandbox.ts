@@ -6,13 +6,14 @@ import { EXIT_ANIMS, SLEEP_POSE } from './anim/animations';
 import { mergePose } from './anim/pose';
 import type { AnimName } from './anim/types';
 import { Renderer } from './art/renderer';
+import { normalizeOutfit } from './art/outfits';
 import { normalizeStyle } from './art/style';
 import type { Style } from './art/style';
 import { Balloon } from './ui/balloon';
 import { ContextMenu } from './ui/contextMenu';
 import { buildMenu } from './ui/menuModel';
 
-/** ?sandbox[&style=flat][&compare]  -  compare shows Classic and Flat side by side. */
+/** ?sandbox[&style=flat][&compare][&outfit=santa-hat|party-hat|heart|pumpkin|shamrock]  -  compare shows Classic and Flat side by side. */
 export function runSandbox(): void {
   const q = new URLSearchParams(location.search);
   const style: Style = normalizeStyle(q.get('style'));
@@ -38,6 +39,8 @@ export function runSandbox(): void {
   }
   const animator = new Animator({ render: (p) => renderers.forEach((r) => r.render(p)) });
   animator.setPose(NEUTRAL);
+  const outfit = normalizeOutfit(q.get('outfit'));
+  renderers.forEach((r) => r.setOutfit(outfit));
   balloons.unshift(new Balloon(document.getElementById('balloon') as HTMLElement, () => undefined));
   const speakAll = (t: string, a?: string) => balloons.forEach((b) => void b.speak(t, a));
 
@@ -93,7 +96,7 @@ export function runSandbox(): void {
   panel.append(log);
 
   // ?sandbox&compare&shot=<scene>: static, chrome-free scenes for README screenshots
-  // (see scripts/screenshots.sh). Scenes: quote | water | sleep | jump | dizzy | sweat | tired | dance | yawn | stretch | stretch2 | stretch3 | celebrate | focus | focus-balloon | menu | menu-wellbeing | menu-water | menu-stretch | menu-focus.
+  // (see scripts/screenshots.sh). Scenes: outfit | outfit-jump | outfit-sleep | quote | water | sleep | jump | dizzy | sweat | tired | dance | yawn | stretch | stretch2 | stretch3 | celebrate | focus | focus-balloon | menu | menu-wellbeing | menu-water | menu-stretch | menu-focus.
   const shot = q.get('shot');
   if (shot) {
     panel.style.display = 'none';
@@ -107,7 +110,7 @@ export function runSandbox(): void {
       for (const el of menuEls) {
         const menu = new ContextMenu(el, () => undefined, () => undefined);
         menu.open(70, 4, buildMenu({
-          sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, style: el === menuEls[0] && !compare ? style : el === menuEls[0] ? 'classic' : 'flat',
+          sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, outfits: true, style: el === menuEls[0] && !compare ? style : el === menuEls[0] ? 'classic' : 'flat',
           water: { enabled: true, intervalMin: 45, glassesToday: 3 }, stretch: { enabled: true, everyMin: 60 },
           focusLeft, calendarSupported: true, meetingHeadsUp: true,
         }));
@@ -122,6 +125,13 @@ export function runSandbox(): void {
       const actions = [{ id: 'drank', label: 'Drank some' }, { id: 'later', label: 'Later' }];
       balloons.forEach((b) => void b.speak('Hydration check! Your brain is mostly water. Top it up?', undefined, actions));
     } else if (shot === 'sleep') {
+      animator.setPose(mergePose(NEUTRAL, SLEEP_POSE));
+      renderers.forEach((r) => r.setSleeping(true));
+    } else if (shot === 'outfit') {
+      animator.setPose(NEUTRAL); // just him in his outfit: &shot=outfit&outfit=<name>
+    } else if (shot === 'outfit-jump') {
+      animator.setPose(frame('Jump', 2));
+    } else if (shot === 'outfit-sleep') {
       animator.setPose(mergePose(NEUTRAL, SLEEP_POSE));
       renderers.forEach((r) => r.setSleeping(true));
     } else if (shot === 'jump') {

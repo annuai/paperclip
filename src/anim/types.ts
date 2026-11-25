@@ -16,4 +16,5 @@ export type AnimName =
   | 'LookDown' | 'Thinking' | 'Writing' | 'GetAttention' | 'Explain' | 'Congratulate'
   | 'IdleEyeRoll' | 'IdleSideToSide' | 'IdleHeadScratch' | 'Dizzy' | 'Jump' | 'Drink' | 'Noticed'
   | 'Tired' | 'Sweat' | 'Dance' | 'Yawn'
-  | 'Stretch' | 'StretchReach' | 'StretchSide' | 'StretchFold' | 'Celebrate';
+  | 'Stretch' | 'StretchReach' | 'StretchSide' | 'StretchFold' | 'Celebrate'
+  | 'Fling' | 'Thud' | 'Bump' | 'Ooh';

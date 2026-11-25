@@ -27,6 +27,9 @@ The character is original artwork. Paperclip is not affiliated with Microsoft an
 |---|---|
 | Click him | Notices you, and his eyes follow your cursor anywhere on screen (click again, or stop moving for 8 s, to end it) |
 | Double-click him | Tells a joke |
+| Triple-click him | Shares a quote |
+| Fling him (drag and let go fast) | He flies, bounces off the screen edges and gets dizzy if it was rough |
+| Drop a file or folder on him | Offers to zip it next to the original |
 | Tap the yoga mat | Bounces like it's a trampoline. Keep tapping to keep him jumping |
 | Drag him | Moves wherever you drop him. Whip him around fast and he gets dizzy |
 | Hover over him while he sleeps | Wakes up |

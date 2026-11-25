@@ -13,6 +13,7 @@ export interface MenuState {
   greetOnUnlock: boolean;
   hideWhenPresenting: boolean;
   reactToMusic: boolean;
+  outfits: boolean; // seasonal outfits on ('auto') or off
   style: Style;
   water: { enabled: boolean; intervalMin: IntervalMin; glassesToday: number };
   stretch: { enabled: boolean; everyMin: StretchMin };
@@ -48,6 +49,7 @@ export function buildMenu(s: MenuState): MenuItem[] {
       children: [
         { id: 'style-classic', label: 'Classic', role: 'radio', checked: s.style === 'classic' },
         { id: 'style-flat', label: 'Flat', role: 'radio', checked: s.style === 'flat' },
+        { id: 'style-outfits', label: 'Seasonal outfits', role: 'checkbox', checked: s.outfits, separatorBefore: true },
       ],
     },
     {

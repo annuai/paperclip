@@ -1,0 +1,16 @@
+[
+  { "kind": "zipDone", "text": "Done! Squished down nice and tidy." },
+  { "kind": "zipDone", "text": "All zipped up. It looks like you're a very organized person!" },
+  { "kind": "zipDone", "text": "Done! I put the zip right next to the original." },
+  { "kind": "zipDone", "text": "Zipped! That was easy. I'm basically a paperclip with a zipper." },
+  { "kind": "zipDone", "text": "Done and done. Smaller, neater, and still yours." },
+  { "kind": "zipDone", "text": "Ta-da! One fresh zip, no originals harmed." },
+  { "kind": "zipFail", "text": "Hmm, I couldn't zip that. Maybe the folder is locked?" },
+  { "kind": "zipFail", "text": "Oops, the zip wouldn't fit together. Can I write to that folder?" },
+  { "kind": "zipFail", "text": "I tried, but the zipper got stuck. Nothing was changed." },
+  { "kind": "zipFail", "text": "Sorry, that one wouldn't zip. The original is safe and sound." },
+  { "kind": "zipNo", "text": "No problem! Just say the word if you change your mind." },
+  { "kind": "zipNo", "text": "Okay! Back to being a plain old paperclip." },
+  { "kind": "zipNo", "text": "Sure thing. The file stays as it is." },
+  { "kind": "zipNo", "text": "Fair enough! I'll keep my zipper to myself." }
+]

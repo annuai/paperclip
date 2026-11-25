@@ -21,7 +21,7 @@ export async function loadSettings(): Promise<Settings> {
     const s = await getStore();
     if (!s) return { ...DEFAULTS };
     const raw: Record<string, unknown> = {};
-    for (const k of ['quiet', 'scheduler', 'position', 'hidden', 'style', 'water', 'greetOnUnlock', 'hideWhenPresenting', 'reactToMusic', 'stretch', 'focus', 'meetingHeadsUp']) raw[k] = await s.get(k);
+    for (const k of ['quiet', 'scheduler', 'position', 'hidden', 'style', 'water', 'greetOnUnlock', 'hideWhenPresenting', 'reactToMusic', 'stretch', 'focus', 'meetingHeadsUp', 'outfits']) raw[k] = await s.get(k);
     return parseSettings(raw);
   } catch (e) {
     console.warn('loadSettings failed', e);
@@ -94,5 +94,55 @@ export async function trackPosition(): Promise<void> {
     });
   } catch (e) {
     console.warn('trackPosition failed', e);
+  }
+}
+
+/** Persist the current window position right now (used when a throw comes to rest). */
+export async function savePosition(): Promise<void> {
+  try {
+    const p = await getCurrentWindow().outerPosition();
+    await saveSettings({ position: { x: p.x, y: p.y } });
+  } catch (e) {
+    console.warn('savePosition failed', e);
+  }
+}
+
+/** Monitor the window is on, as the physics needs it: work area (physical px), scale factor. */
+export async function locateWindow(pos: { x: number; y: number }): Promise<{ area: MRect; scale: number } | null> {
+  try {
+    const w = getCurrentWindow();
+    const size = await w.outerSize();
+    const monitors = await availableMonitors();
+    const dpr = window.devicePixelRatio || 1;
+    const rectOf = (m: (typeof monitors)[number]): MRect => {
+      const a = m.workArea ?? m;
+      return { x: a.position.x, y: a.position.y, w: a.size.width, h: a.size.height };
+    };
+    const cx = pos.x + size.width / 2;
+    const cy = pos.y + size.height / 2;
+    const inside = (r: MRect, x: number, y: number) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+    // Same-scale monitors first (physical coordinates agree), then a logical-px test for mixed-DPI desktops
+    // (macOS positions monitors in points), then any physical hit, then the primary monitor.
+    const same = monitors.filter((m) => Math.abs((m.scaleFactor || 1) - dpr) < 0.01);
+    const pick =
+      same.find((m) => inside(rectOf(m), cx, cy)) ??
+      monitors.find((m) => { const s = m.scaleFactor || 1; const r = rectOf(m); return inside({ x: r.x / s, y: r.y / s, w: r.w / s, h: r.h / s }, cx / dpr, cy / dpr); }) ??
+      monitors.find((m) => inside(rectOf(m), cx, cy)) ??
+      (await primaryMonitor()) ??
+      monitors[0];
+    if (!pick) return null;
+    return { area: rectOf(pick), scale: pick.scaleFactor || 1 };
+  } catch (e) {
+    console.warn('locateWindow failed', e);
+    return null;
+  }
+}
+
+export async function windowSize(): Promise<{ w: number; h: number } | null> {
+  try {
+    const s = await getCurrentWindow().outerSize();
+    return { w: s.width, h: s.height };
+  } catch {
+    return null;
   }
 }

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window';
 import type { WindowCtl } from '../agent/agent';
 import type { Rect } from '../ui/hitRects';
 import type { CalEvent } from '../agent/meeting';
@@ -14,10 +14,12 @@ async function guard<T>(label: string, fn: () => Promise<T>): Promise<T | undefi
   }
 }
 
-export const win: WindowCtl & { startDragging(): Promise<void>; onMoved(cb: (pos: { x: number; y: number }) => void): Promise<() => void> } = {
+export const win: WindowCtl & { startDragging(): Promise<void>; setPosition(x: number, y: number): Promise<void>; onMoved(cb: (pos: { x: number; y: number }) => void): Promise<() => void> } = {
   async show() { await guard('window.show', () => getCurrentWindow().show()); },
   async hide() { await guard('window.hide', () => getCurrentWindow().hide()); },
   async startDragging() { await getCurrentWindow().startDragging(); },
+  /** Physical px, outer position (the unit `onMoved` reports). */
+  async setPosition(x, y) { await getCurrentWindow().setPosition(new PhysicalPosition(x, y)); },
   async onMoved(cb) {
     const un = await getCurrentWindow().onMoved((e) => cb({ x: e.payload.x, y: e.payload.y }));
     return un;
@@ -56,6 +58,7 @@ export interface WellbeingTray {
   stretchInterval: number;
   focusLeft: number | null; // whole minutes left in a running focus session
   meeting: boolean;
+  outfits: boolean;
 }
 export async function syncTray(
   visible: boolean,
@@ -65,11 +68,11 @@ export async function syncTray(
   water = { enabled: true, intervalMin: 45, glasses: 0 },
   greet = true,
   presence = { hidePresenting: true, music: true },
-  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false },
+  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false, outfits: true },
 ): Promise<void> {
   await guard('sync_tray', () =>
     invoke('sync_tray', {
-      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music, stretchEnabled: wellbeing.stretchEnabled, stretchInterval: wellbeing.stretchInterval, focusLeft: wellbeing.focusLeft, meeting: wellbeing.meeting },
+      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music, stretchEnabled: wellbeing.stretchEnabled, stretchInterval: wellbeing.stretchInterval, focusLeft: wellbeing.focusLeft, meeting: wellbeing.meeting, outfits: wellbeing.outfits },
     }),
   );
 }
@@ -101,4 +104,29 @@ export async function calendarSetEnabled(enabled: boolean): Promise<void> {
 }
 export async function onMeetingEvents(cb: (events: CalEvent[]) => void): Promise<() => void> {
   return listen<CalEvent[]>('meeting-events', (e) => cb(e.payload));
+}
+
+// ---- File drop (paths never reach JS: Rust keeps them, JS gets names/sizes and asks Rust to zip "what was dropped") ----
+export interface FileDragEvent { phase: 'enter' | 'over' | 'leave'; x: number; y: number }
+export interface FilesDropped { count: number; name: string; kind: string; bytes: number; x: number; y: number }
+export async function onFileDrag(cb: (e: FileDragEvent) => void): Promise<() => void> {
+  return listen<FileDragEvent>('file-drag', (e) => cb(e.payload));
+}
+export async function onFilesDropped(cb: (e: FilesDropped) => void): Promise<() => void> {
+  return listen<FilesDropped>('files-dropped', (e) => cb(e.payload));
+}
+/** Zips the last-dropped items next to the first one. Resolves with the zip's file name, or null on failure. */
+export async function zipDropped(): Promise<string | null> {
+  try {
+    return (await invoke<{ name: string }>('zip_dropped')).name;
+  } catch (e) {
+    console.warn('zip_dropped failed', e);
+    return null;
+  }
+}
+export async function clearDropped(): Promise<void> {
+  await guard('clear_dropped', () => invoke('clear_dropped'));
+}
+export async function revealZip(): Promise<void> {
+  await guard('reveal_zip', () => invoke('reveal_zip'));
 }
