@@ -457,5 +457,9 @@ mod tests {
     fn focus_label_reads_naturally() {
         assert_eq!(focus_label(None), "Not running");
         assert_eq!(focus_label(Some(18)), "18 min left");
+        // Ask Paperclip can start any length from 1 to 180 minutes, not just the four menu presets.
+        assert_eq!(focus_label(Some(1)), "1 min left");
+        assert_eq!(focus_label(Some(137)), "137 min left");
+        assert_eq!(focus_label(Some(180)), "180 min left");
     }
 }

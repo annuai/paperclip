@@ -108,10 +108,35 @@ describe('FocusTimer', () => {
   });
 });
 
+describe('any length from 1 to 180 minutes (Ask Paperclip can start them)', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1_700_000_000_000); });
+  afterEach(() => vi.useRealTimers());
+
+  it.each([1, 7, 137, 180])('%d minutes counts down and finishes', async (n) => {
+    const { f, ticks, saves, done } = make();
+    f.start(n);
+    expect(saves[0]).toEqual({ endsAt: Date.now() + n * MIN, minutes: n });
+    expect(f.minutesLeft()).toBe(n);
+    await vi.advanceTimersByTimeAsync((n - 1) * MIN);
+    expect(f.minutesLeft()).toBe(1);
+    expect(done()).toBe(0);
+    await vi.advanceTimersByTimeAsync(MIN);
+    expect(done()).toBe(1);
+    expect(ticks).toHaveLength(n - 1);
+  });
+  it('a long one resumes after a restart', () => {
+    const { f } = make();
+    expect(f.resume(Date.now() + 137 * MIN, 137)).toBe(true);
+    expect(f.minutesLeft()).toBe(137);
+    expect(f.totalMinutes).toBe(137);
+  });
+});
+
 describe('focusLabel', () => {
   it('shows whole minutes, at least 1', () => {
     expect(focusLabel(25)).toBe('25');
     expect(focusLabel(1)).toBe('1');
     expect(focusLabel(0)).toBe('1');
+    expect(focusLabel(137)).toBe('137');
   });
 });

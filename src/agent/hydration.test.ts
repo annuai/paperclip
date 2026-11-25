@@ -164,4 +164,31 @@ describe('HydrationScheduler', () => {
     await s.remindNow();
     expect(reminders).toHaveLength(1);
   });
+
+  describe('logGlass (a glass logged outside a reminder)', () => {
+    it('counts today, restarts the interval, saves and notifies', async () => {
+      const { s, saves, reminders } = make({ state: { lastReminderAt: at(8, 30), glasses: 2, glassesDate: dateKey(at(9)) } });
+      let changed = 0;
+      s.onChange(() => changed++);
+      s.start();
+      expect(s.logGlass()).toBe(3);
+      expect(s.glassesToday).toBe(3);
+      expect(changed).toBe(1);
+      expect(saves[saves.length - 1]).toMatchObject({ glasses: 3, lastReminderAt: at(9) });
+      await vi.advanceTimersByTimeAsync(44 * MIN); // the interval counts from the logged glass, not the old reminder
+      expect(reminders).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(2 * MIN);
+      expect(reminders).toHaveLength(1);
+    });
+    it('starts a new count on a new day, and clears a pending snooze', () => {
+      const { s } = make({ state: { lastReminderAt: at(8), glasses: 5, glassesDate: dateKey(at(9, 0, 4)) } });
+      expect(s.glassesToday).toBe(0);
+      expect(s.logGlass()).toBe(1);
+      expect(s.snapshot.glassesDate).toBe(dateKey(at(9)));
+    });
+    it('works while reminders are off', () => {
+      const { s } = make({ enabled: false });
+      expect(s.logGlass()).toBe(1);
+    });
+  });
 });

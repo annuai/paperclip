@@ -60,11 +60,11 @@ export class Agent {
 
   play(name: AnimName, timeoutMs?: number): Promise<void> { return this.enqueue({ type: 'play', name, timeoutMs }); }
   speak(text: string, attribution?: string): Promise<void> { return this.enqueue({ type: 'speak', text, attribution }); }
-  /** Speak with action buttons; resolves with the chosen id, 'done' (timed out) or 'closed' (interrupted/dropped). */
-  ask(text: string, actions: BalloonAction[], attribution?: string): Promise<string> {
+  /** Speak with action buttons (and, with `anim`, a named non-looping animation instead of Explain); resolves with the chosen id, 'done' (timed out) or 'closed' (interrupted/dropped). */
+  ask(text: string, actions: BalloonAction[], attribution?: string, anim?: AnimName): Promise<string> {
     return new Promise<string>((resolve) => {
       let got = false;
-      void this.enqueue({ type: 'speak', text, attribution, actions, result: (r) => { got = true; resolve(r); } })
+      void this.enqueue({ type: 'speak', text, attribution, actions, anim, result: (r) => { got = true; resolve(r); } })
         .then(() => { if (!got) resolve('closed'); });
     });
   }

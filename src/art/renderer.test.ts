@@ -84,6 +84,20 @@ describe('focus timer prop', () => {
     r.setFocus(null);
     expect(shown()).toBe(false);
   });
+  it('a three-digit label (timers go up to 180 minutes) shrinks to fit the dial, and grows back', () => {
+    const c = document.createElement('div');
+    document.body.append(c);
+    const r = new Renderer(c, 'classic');
+    const size = () => c.querySelector('#focusLabel')?.getAttribute('font-size');
+    r.setFocus('25');
+    expect(size()).toBe('12');
+    r.setFocus('180');
+    expect(size()).toBe('9');
+    r.setStyle('flat');
+    expect(size()).toBe('10');
+    r.setFocus('99');
+    expect(size()).toBe('13');
+  });
   it('flat timer uses only palette tokens (no gradients)', () => {
     const t = PAPERCLIP_SVG_FLAT.slice(PAPERCLIP_SVG_FLAT.indexOf('id="focusTimer"'), PAPERCLIP_SVG_FLAT.indexOf('</text>'));
     const hexes = new Set((t.match(/#[0-9A-Fa-f]{6}/g) ?? []).map((h) => h.toUpperCase()));

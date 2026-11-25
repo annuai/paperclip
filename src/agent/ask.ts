@@ -1,4 +1,5 @@
 import type { BalloonAction, PromptOpts } from './agent';
+import type { AnimName } from '../anim/types';
 
 /** Which service answers. OpenRouter is the default (it has free models); Groq (free tier, very fast) and the Claude API are optional. */
 export type AskProvider = 'openrouter' | 'groq' | 'anthropic';
@@ -82,6 +83,17 @@ export class AskHistory {
 
 export type AskLine = 'intro' | 'prompt' | 'again' | 'keyPrompt' | 'keySaved' | 'keyRemoved' | 'keyFailed' | 'modelPrompt' | 'modelSaved' | 'modelInvalid';
 
+/** An answer produced on this machine (see agent/intents.ts): shown like an AI answer, but with no network call and no key. */
+export interface LocalAnswer {
+  reply: string;
+  attribution?: string;
+  /** Plays with the balloon. */
+  anim?: AnimName;
+  /** Runs after he has spoken, and ends the conversation (a nap, a hide, the guided stretch). */
+  after?: () => Promise<void>;
+}
+export interface ChooseOpts { attribution?: string; anim?: AnimName }
+
 export interface AskDeps {
   hasKey(): boolean;
   introSeen(): boolean;
@@ -91,9 +103,11 @@ export interface AskDeps {
   /** Shows an input in the balloon; resolves with the typed text, or null on Esc / interrupt. */
   prompt(text: string, opts: PromptOpts): Promise<string | null>;
   say(text: string): Promise<void>;
-  choose(text: string, actions: BalloonAction[]): Promise<string>;
+  choose(text: string, actions: BalloonAction[], opts?: ChooseOpts): Promise<string>;
   /** Starts the thinking animation; the returned function stops it (safe to call even if it never started). */
   think(): () => void;
+  /** Answers and/or acts on the question locally when it clearly asks for something he can do himself; null = ask the AI. Runs before the key check. */
+  local?(question: string): Promise<LocalAnswer | null>;
   query(question: string, turns: Turn[]): Promise<AskResult>;
   saveKey(key: string): Promise<boolean>;
   removeKey(): Promise<void>;
@@ -109,7 +123,9 @@ export type AskState = 'idle' | 'keyEntry' | 'asking' | 'waiting' | 'answered';
 
 /**
  * The Ask Paperclip conversation as a small state machine:
- *   idle -> (keyEntry) -> asking -> waiting -> answered -> asking ... -> idle
+ *   idle -> asking -> (answered locally | (keyEntry) -> waiting -> answered) -> asking ... -> idle
+ * A question is first offered to deps.local (intents he can answer himself, with no key and no network); only the rest
+ * needs a key, which is asked for after the question has been typed.
  * It never touches the DOM or the network itself; main.ts supplies those through AskDeps.
  * A newer ask() or any epoch change makes an older flow drop out quietly (its late answer is discarded).
  */
@@ -119,13 +135,12 @@ export class AskFlow {
 
   constructor(private readonly deps: AskDeps, private readonly history: AskHistory) {}
 
-  /** Starts (or restarts) a conversation: key first if there is none, then question / answer rounds. */
+  /** Starts (or restarts) a conversation: question / answer rounds; the key is asked for only when a question really needs the provider. */
   async ask(): Promise<void> {
     const run = ++this.run;
     const epoch = this.deps.epoch();
     const stale = () => run !== this.run || this.deps.epoch() !== epoch;
     try {
-      if (!this.deps.hasKey() && !(await this.enterKey(stale, false))) return;
       let pending: string | null = null; // a question that still needs sending after a key fix
       let first = true;
       while (!stale()) {
@@ -141,6 +156,25 @@ export class AskFlow {
           if (stale()) return;
           question = typed?.trim().slice(0, MAX_QUESTION_CHARS) ?? '';
           if (!question) return; // Esc, or nothing typed
+        }
+        const local = (await this.deps.local?.(question)) ?? null;
+        if (stale()) return;
+        if (local) {
+          this.history.add(question, local.reply);
+          this.state = 'answered';
+          if (local.after) {
+            await this.deps.say(local.reply);
+            if (!stale()) await local.after();
+            return;
+          }
+          const choice = await this.deps.choose(local.reply, [{ id: 'reply', label: 'Reply' }, { id: 'done', label: 'Done' }], { attribution: local.attribution, anim: local.anim });
+          if (stale() || choice !== 'reply') return;
+          continue;
+        }
+        // Not something he can do himself: it needs the provider, so it needs a key first (the question goes out after it).
+        if (!this.deps.hasKey()) {
+          if (!(await this.enterKey(stale, false))) return;
+          if (stale()) return;
         }
         this.state = 'waiting';
         const stopThinking = this.deps.think();

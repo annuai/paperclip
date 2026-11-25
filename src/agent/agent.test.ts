@@ -72,6 +72,14 @@ describe('Agent', () => {
     expect(n).toBe(1);
   });
 
+  it('ask with an animation plays that animation with the balloon (not Explain) and still reports the choice', async () => {
+    const { agent, log } = setup();
+    const r = await agent.ask('Yes I can!', [{ id: 'done', label: 'Done' }], undefined, 'Jump');
+    expect(r).toBe('done');
+    expect(log.filter((l) => l.startsWith('play:'))).toEqual(['play:Jump']);
+    expect(log).toContain('speak:Yes I can!');
+  });
+
   it('speakAnimated plays the named animation, lets it finish, and reports the balloon result', async () => {
     const { agent, log } = setup();
     const r = await agent.speakAnimated('reach up', 'StretchReach');

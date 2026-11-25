@@ -111,6 +111,12 @@ describe('main menu', () => {
     expect(running?.children?.map((c) => c.id)).toEqual(['focus-15', 'focus-25', 'focus-45', 'focus-60', 'focus-stop']);
   });
 
+  it('focus: a timer of any length (Ask Paperclip starts 1 to 180 minutes) reads naturally and keeps the presets', () => {
+    const running = find(buildMenu({ ...base, focusLeft: 137 }), 'focus');
+    expect(running?.label).toBe('Focus: 137 min left');
+    expect(running?.children?.map((c) => c.id)).toEqual(['focus-15', 'focus-25', 'focus-45', 'focus-60', 'focus-stop']);
+  });
+
   it('meeting heads-up is hidden where the calendar is unsupported', () => {
     expect(find(buildMenu({ ...base, calendarSupported: false }), 'meeting')).toBeUndefined();
     expect(find(buildMenu({ ...base, meetingHeadsUp: true }), 'meeting')?.checked).toBe(true);

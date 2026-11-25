@@ -52,6 +52,8 @@ const MAX_KEY_LEN_ANTHROPIC: usize = 512;
 const MAX_KEY_LEN_GROQ: usize = 512;
 
 const SYSTEM_PROMPT: &str = "You are Paperclip, a cheerful, slightly dorky paperclip who lives on the user's desktop. \
+You were built by a designer called Annuai, and you are inspired by the original Microsoft Clippy. \
+You can run a focus timer, remind the user to drink water and stretch, tell jokes and quotes, and answer questions. \
 Answer in 1 to 3 short sentences, under 220 characters in total, because your speech balloon is tiny. \
 Use plain text only: no markdown, no lists, no code blocks, no emoji. \
 Be warm and a little playful, but get the answer right. If a question needs a long answer, give the key point and say you are keeping it short.";
@@ -769,6 +771,22 @@ mod tests {
     // ---- request ----
 
     #[test]
+    fn system_prompt_knows_its_maker_and_abilities_and_keeps_the_length_rules() {
+        for needle in [
+            "built by a designer called Annuai",
+            "inspired by the original Microsoft Clippy",
+            "focus timer",
+            "drink water and stretch",
+            "jokes and quotes",
+            "answer questions",
+            "under 220 characters",
+            "no markdown",
+        ] {
+            assert!(SYSTEM_PROMPT.contains(needle), "{needle}");
+        }
+    }
+
+    #[test]
     fn request_shape_defaults_to_the_free_model_with_low_hidden_reasoning() {
         let body = build_request(None, &[], "What is Rust?");
         assert_eq!(body["model"], "google/gemma-4-31b-it:free");
@@ -783,6 +801,8 @@ mod tests {
         assert_eq!(msgs[0]["role"], "system");
         let system = msgs[0]["content"].as_str().unwrap();
         assert!(system.contains("Paperclip") && system.contains("1 to 3 short sentences") && system.contains("no markdown"));
+        assert!(system.contains("designer called Annuai") && system.contains("original Microsoft Clippy"));
+        assert!(system.contains("focus timer") && system.contains("water") && system.contains("stretch") && system.contains("jokes and quotes"));
         assert_eq!(msgs[1], json!({ "role": "user", "content": "What is Rust?" }));
     }
 
@@ -1025,6 +1045,8 @@ mod tests {
         assert_eq!(body["messages"], json!([{ "role": "user", "content": "What is Rust?" }]));
         let system = body["system"].as_str().unwrap();
         assert!(system.contains("Paperclip") && system.contains("1 to 3 short sentences") && system.contains("no markdown"));
+        assert!(system.contains("designer called Annuai") && system.contains("original Microsoft Clippy"));
+        assert!(system.contains("focus timer") && system.contains("water") && system.contains("stretch") && system.contains("jokes and quotes"));
     }
 
     #[test]

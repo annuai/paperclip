@@ -12,11 +12,20 @@ The character is original artwork. Paperclip is not affiliated with Microsoft an
 - **Says hello when you unlock your screen**, with a different line depending on how long you were away.
 - **Water reminders:** every 30, 45, 60 or 90 minutes between 8 am and 10 pm, with **Drank some** / **Later** buttons and a daily glass count.
 - **Stretch breaks:** after an hour of steady use (30, 45, 60 or 90 minutes) he stretches on his mat and invites you to join a 30-second guided stretch.
-- **Focus timer:** 15 to 60 minutes. He sets a timer on his mat, stays quiet until it rings, then celebrates. The menu-bar icon shows the minutes left.
+- **Focus timer:** 15, 25, 45 or 60 minutes from the menu, or any length from 1 to 180 minutes by asking him ("start a 40 minute timer"). He sets a timer on his mat, stays quiet until it rings, then celebrates. The menu-bar icon shows the minutes left.
 - **Meeting heads-up (macOS, opt-in):** a nudge 5 minutes before calendar events. Calendar access is only requested when you turn it on.
 - **Notices your computer:** hides while you present or watch something full screen and comes back after, dances when music plays, sweats when the CPU is pegged, gets tired on low battery and yawns late at night.
 - **Seasonal outfits:** a pumpkin, Santa hat, party hat, heart or shamrock on the right days (turn off under **Style**).
 - **Answers questions (optional, free by default):** *Ask Paperclip* sends a short question to a model on [OpenRouter](https://openrouter.ai) and shows the answer in his balloon (1 to 3 sentences). It works out of the box with a free model (Gemma 4 31B): you only need a free OpenRouter API key ([create one here](https://openrouter.ai/keys)). You can switch to Claude Haiku 5.5 (paid on OpenRouter) or any other OpenRouter model id (**Other model…**). Want it faster? Switch the provider to **Groq**: its free tier needs no payment and is very fast (create a key at [console.groq.com/keys](https://console.groq.com/keys)); answers use Qwen 3.8 27B by default, GPT-OSS 120B as the smarter choice, or any other Groq model id, and are capped to a few short sentences. If the free tier's rate limit is hit he says how long to wait. Prefer the Claude API directly? Switch the provider to **Claude (Anthropic)** and add an Anthropic API key. Keys are kept in your system keychain (one per provider: OpenRouter, Groq, Claude), and never shown again. Only the text you type and the last few turns of the chat go to the provider and the model you picked: no screen, clipboard or files. Free models have tight rate limits, so he may ask you to try again in a bit.
+  **Things you can ask him** (he answers these himself: no network, no API key needed):
+  - *"Who made you?"*, *"What can you do?"*: he introduces himself.
+  - *"Can you dance?"*, *"blink"*, *"jump"*, *"wave"*, *"look left"*, *"take a nap"*: he does it (also wink, stretch, yawn, spin, celebrate, think, look right/up/down).
+  - *"Start a 25 minute timer"*, *"pomodoro"*, *"how much time is left?"*, *"stop the timer"*: the focus timer (1 to 180 minutes).
+  - *"Remind me to drink water"*, *"I drank a glass of water"*: turns the water reminders on, or logs a glass.
+  - *"Tell me a joke"*, *"Give me a quote"*, *"Let's stretch"*: a joke, a quote, or the guided stretch.
+  - *"Go away"*: hides him. *"Change style"*, *"flat style"*: switches the look.
+  
+  Anything else goes to the AI as before.
 - **Lives:** blinks, looks around, fidgets, dozes off when you leave him alone, and enters and leaves with a yoga mat in several different ways.
 - **Two styles:** *Classic* (glossy) and *Flat* (geometric, set in Oswald). Switch between them at any time.
 - **Stays out of the way:** clicks on the empty parts of his window pass through to the apps underneath, and he never takes keyboard focus, except while you are typing a question to Ask Paperclip.
@@ -37,7 +46,7 @@ The character is original artwork. Paperclip is not affiliated with Microsoft an
 | Double middle-click him, or right-click him twice quickly | Opens **Ask Paperclip** |
 | Fling him (drag and let go fast) | He flies, bounces off the screen edges and gets dizzy if it was rough |
 | Drop a file or folder on him | Offers to zip it next to the original |
-| Choose **Ask Paperclip** > **Ask a question…** | A box opens in his balloon: type, press Enter to send, Esc to cancel. The first time he asks for your [OpenRouter API key](https://openrouter.ai/keys) (**Set OpenRouter API key…** / **Remove API key**, the **OpenRouter / Groq / Claude (Anthropic)** provider choice (the key item then reads **Set Groq API key…**, with a key from [console.groq.com/keys](https://console.groq.com/keys)) and the model choice live in the same submenu). Answers offer **Reply** and **Done** |
+| Choose **Ask Paperclip** > **Ask a question…** | A box opens in his balloon: type, press Enter to send, Esc to cancel. Things he can do himself ("start a 25 minute timer", "tell me a joke", "who made you?") are answered on the spot, with no key and nothing sent. The first time he asks for your [OpenRouter API key](https://openrouter.ai/keys) (**Set OpenRouter API key…** / **Remove API key**, the **OpenRouter / Groq / Claude (Anthropic)** provider choice (the key item then reads **Set Groq API key…**, with a key from [console.groq.com/keys](https://console.groq.com/keys)) and the model choice live in the same submenu). Answers offer **Reply** and **Done** |
 | Tap the yoga mat | Bounces like it's a trampoline. Keep tapping to keep him jumping |
 | Drag him | Moves wherever you drop him. Whip him around fast and he gets dizzy |
 | Hover over him while he sleeps | Wakes up |

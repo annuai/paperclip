@@ -105,6 +105,23 @@ export class HydrationScheduler {
     if (this.active) this.arm();
   }
 
+  /** A glass drunk outside a reminder (the user said so): counts it like "Drank some" and restarts the interval. Returns today's total. */
+  logGlass(): number {
+    this.addGlass(this.now());
+    this.h.save({ ...this.state });
+    for (const cb of [...this.listeners]) cb();
+    if (this.active && !this.busy) this.arm();
+    return this.glassesToday;
+  }
+
+  private addGlass(t: number): void {
+    const today = dateKey(t);
+    this.state.glasses = this.state.glassesDate === today ? this.state.glasses + 1 : 1;
+    this.state.glassesDate = today;
+    this.state.lastReminderAt = t;
+    this.snoozedUntil = null;
+  }
+
   /** "Remind me now": ignores active hours and hidden state (the caller shows him first). */
   async remindNow(): Promise<void> {
     if (this.busy) return;
@@ -155,11 +172,7 @@ export class HydrationScheduler {
     this.busy = false;
     const t = this.now();
     if (result === 'drank') {
-      const today = dateKey(t);
-      this.state.glasses = this.state.glassesDate === today ? this.state.glasses + 1 : 1;
-      this.state.glassesDate = today;
-      this.state.lastReminderAt = t;
-      this.snoozedUntil = null;
+      this.addGlass(t);
     } else if (!wasSnooze) {
       this.snoozedUntil = t + SNOOZE_MIN * 60_000; // snooze once
     } else {

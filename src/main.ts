@@ -1,7 +1,8 @@
-import { ANIMATIONS, IDLE_ANIMS, SHOWY_ANIMS } from './anim/animations';
+import { ANIMATIONS, IDLE_ANIMS, SHOWY_ANIMS, isLooping } from './anim/animations';
 import { Animator } from './anim/animator';
 import { HIDDEN } from './anim/pose';
 import { Agent } from './agent/agent';
+import type { BalloonAction } from './agent/agent';
 import { DizzyDetector, DIZZY_IDLE_MS } from './agent/dizzy';
 import type { Style } from './art/style';
 import { HydrationScheduler } from './agent/hydration';
@@ -10,6 +11,9 @@ import { DEFAULT_SLEEP, SleepController } from './agent/sleep';
 import { Presence } from './agent/presence';
 import { AskFlow, AskHistory, FREE_MODEL, GROQ_FAST_MODEL, GROQ_SMART_MODEL, PAID_HAIKU_MODEL, providerName } from './agent/ask';
 import { UpdateFlow } from './agent/updates';
+import { matchIntent } from './agent/intents';
+import { runIntent } from './agent/intentRunner';
+import type { IntentDeps } from './agent/intentRunner';
 import type { AskLine, AskModel, AskProvider, ClaudeModel, GroqModel } from './agent/ask';
 import { FocusTimer, focusLabel } from './agent/focus';
 import { MeetingAlerts, meetingLine } from './agent/meeting';
@@ -258,20 +262,25 @@ async function boot(): Promise<void> {
         stretch.later(Date.now());
         return;
       }
-      stretch.completed();
-      const epoch = agent.epoch;
-      let cut = false;
-      const finished = await runGuided(
-        async (step) => { if ((await agent.speakAnimated(step.line, step.anim)) === 'closed') cut = true; },
-        () => cut || agent.epoch !== epoch, // a click, a hide or another feature taking over ends the sequence
-      );
-      if (finished) {
-        void agent.play('Congratulate');
-        const done = await content.next('stretchDone');
-        void agent.speak(done.text);
-      }
+      await guidedStretch();
     } finally {
       stretchOpen = false;
+    }
+  };
+
+  /** The guided sequence itself (after the user said yes to the offer, or asked for it in Ask Paperclip). */
+  const guidedStretch = async (): Promise<void> => {
+    stretch.completed();
+    const epoch = agent.epoch;
+    let cut = false;
+    const finished = await runGuided(
+      async (step) => { if ((await agent.speakAnimated(step.line, step.anim)) === 'closed') cut = true; },
+      () => cut || agent.epoch !== epoch, // a click, a hide or another feature taking over ends the sequence
+    );
+    if (finished) {
+      void agent.play('Congratulate');
+      const done = await content.next('stretchDone');
+      void agent.speak(done.text);
     }
   };
 
@@ -288,12 +297,16 @@ async function boot(): Promise<void> {
     })) await offerStretch();
   };
 
-  const startFocus = async (minutes: number): Promise<void> => {
-    user();
+  /** Starts the timer and updates the prop and the tray; says nothing and leaves the current balloon alone. */
+  const beginFocus = (minutes: number): void => {
     lastFocusMin = minutes;
     focus.start(minutes);
     renderer.setFocus(focusLabel(focus.minutesLeft()));
     sync();
+  };
+  const startFocus = async (minutes: number): Promise<void> => {
+    user();
+    beginFocus(minutes);
     if (agent.hidden) return; // the timer runs; he just is not there to hold it
     const item = await content.next('focusStart');
     await agent.speak(item.text);
@@ -528,6 +541,42 @@ async function boot(): Promise<void> {
     sync();
     void askKeyStatus(p).then((has) => { if (askProvider === p) { askKeySet = has; sync(); } });
   };
+  /** An answer with buttons; a named animation plays with it, except a looping one (Thinking), which plays on its own for a moment. */
+  const askBalloon = (text: string, actions: BalloonAction[], o?: { attribution?: string; anim?: AnimName }): Promise<string> => {
+    const anim = o?.anim;
+    if (anim && isLooping(ANIMATIONS[anim])) {
+      void agent.play(anim);
+      return agent.ask(text, actions, o?.attribution);
+    }
+    return agent.ask(text, actions, o?.attribution, anim);
+  };
+  // Local intents (agent/intents.ts): what he can do himself, with no key and no network. These reuse the same functions as the menu.
+  const intentDeps: IntentDeps = {
+    play: (a) => void agent.play(a),
+    focusLeft,
+    startTimer: beginFocus,
+    stopTimer: stopFocus,
+    water: {
+      enabled: () => hydration.config.enabled,
+      intervalMin: () => hydration.config.intervalMin,
+      setEnabled: (on) => { hydration.setConfig({ enabled: on }); persistWater(); sync(); },
+      logGlass: () => hydration.logGlass(),
+    },
+    content: (kind) => content.next(kind),
+    stretch: async () => {
+      stretchOpen = true;
+      try {
+        follow.end('interrupt');
+        await guidedStretch();
+      } finally {
+        stretchOpen = false;
+      }
+    },
+    nap: () => runCommand('nap'),
+    hide: () => hideNow(),
+    style: () => style,
+    setStyle,
+  };
   const ask = new AskFlow(
     {
       hasKey: () => askKeySet,
@@ -536,7 +585,11 @@ async function boot(): Promise<void> {
       line: askLine,
       prompt: (text, opts) => agent.prompt(text, opts),
       say: (text) => agent.speak(text),
-      choose: (text, actions) => agent.ask(text, actions),
+      choose: (text, actions, o) => askBalloon(text, actions, o),
+      local: async (q) => {
+        const intent = matchIntent(q);
+        return intent ? runIntent(intent, intentDeps) : null;
+      },
       think: () => agent.hold('Thinking'),
       query: async (q, turns) => {
         const r = await askQuestion(q, turns, activeModel(), askProvider);

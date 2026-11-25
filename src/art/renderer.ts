@@ -165,7 +165,14 @@ export class Renderer {
     const el = this.els.focusTimer;
     if (!el) return;
     el.style.display = minutes === null ? 'none' : '';
-    if (minutes !== null && this.els.focusLabel) this.els.focusLabel.textContent = minutes;
+    const label = this.els.focusLabel;
+    if (minutes !== null && label) {
+      label.textContent = minutes;
+      // Timers can run up to 180 minutes: three digits get a smaller font so they stay inside the dial.
+      const base = Number(label.dataset.baseSize ?? label.getAttribute('font-size'));
+      label.dataset.baseSize = String(base);
+      label.setAttribute('font-size', String(minutes.length >= 3 ? Math.round(base * 0.75) : base));
+    }
   }
 
   private renderProp(k: PropKey, s: PropState): void {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AskFlow, AskHistory, DEFAULT_ASK_MODEL, MAX_QUESTION_CHARS, DEFAULT_ASK_PROVIDER, isValidModelId, normalizeAskModel, normalizeAskProvider, normalizeClaudeModel, providerName, DEFAULT_GROQ_MODEL, isValidGroqModelId, isPresetGroqModel, normalizeGroqModel } from './ask';
 import type { AskProvider } from './ask';
-import type { AskDeps, AskResult, Turn } from './ask';
+import type { AskDeps, AskResult, LocalAnswer, Turn } from './ask';
 import type { PromptOpts } from './agent';
 
 describe('AskHistory', () => {
@@ -73,6 +73,8 @@ interface Rig {
   choices: string[];
   results: AskResult[];
   history: AskHistory;
+  /** answers the next local() calls (null = not a local question) */
+  locals: (LocalAnswer | null)[];
 }
 
 function rig(): Rig {
@@ -84,6 +86,7 @@ function rig(): Rig {
     typed: [] as (string | null)[],
     choices: [] as string[],
     results: [] as AskResult[],
+    locals: [] as (LocalAnswer | null)[],
   } as Rig;
   r.history = new AskHistory();
   const deps: AskDeps = {
@@ -93,7 +96,8 @@ function rig(): Rig {
     line: async (kind) => `line:${kind}`,
     prompt: async (text, opts) => { r.prompts.push({ text, opts }); r.log.push('prompt'); return r.typed.shift() ?? null; },
     say: async (t) => { r.log.push(`say:${t}`); },
-    choose: async (t, actions) => { r.log.push(`choose:${t}|${actions.map((a) => a.id).join(',')}`); return r.choices.shift() ?? 'done'; },
+    choose: async (t, actions, opts) => { r.log.push(`choose:${t}|${actions.map((a) => a.id).join(',')}${opts?.anim ? `|${opts.anim}` : ''}`); return r.choices.shift() ?? 'done'; },
+    local: async (q) => { r.log.push(`local:${q}`); return r.locals.shift() ?? null; },
     think: () => { r.log.push('think'); return () => r.log.push('settle'); },
     query: async (q, turns) => { r.queries.push({ q, turns }); r.log.push('query'); return r.results.shift() ?? ok('default answer'); },
     saveKey: async (k) => { r.state.savedKeys.push(k); return r.state.saveOk; },
@@ -112,7 +116,7 @@ describe('AskFlow: asking', () => {
     r.typed.push('  what is rust?  ');
     r.results.push(ok('A language.'));
     await r.flow.ask();
-    expect(r.log).toEqual(['prompt', 'think', 'query', 'settle', 'choose:A language.|reply,done']);
+    expect(r.log).toEqual(['prompt', 'local:what is rust?', 'think', 'query', 'settle', 'choose:A language.|reply,done']);
     expect(r.prompts[0].opts.secret).toBe(false);
     expect(r.queries[0].q).toBe('what is rust?');
     expect(r.flow.state).toBe('idle');
@@ -206,34 +210,45 @@ describe('AskFlow: errors', () => {
 });
 
 describe('AskFlow: API key entry', () => {
-  it('no key: asks for it with a secret prompt first, then goes on to the question', async () => {
+  it('no key: the question is typed first, then the key is asked for (secret prompt), then the same question goes out', async () => {
     const r = rig();
     r.state.key = false;
-    r.typed.push('  sk-ant-abc  ', 'a question');
+    r.typed.push('a question', '  sk-ant-abc  ');
     await r.flow.ask();
-    expect(r.prompts[0]).toMatchObject({ text: 'line:keyPrompt', opts: { secret: true } });
+    expect(r.prompts[0]).toMatchObject({ text: 'line:prompt', opts: { secret: false } });
+    expect(r.prompts[1]).toMatchObject({ text: 'line:keyPrompt', opts: { secret: true } });
     expect(r.state.savedKeys).toEqual(['sk-ant-abc']);
-    expect(r.prompts[1].opts.secret).toBe(false);
-    expect(r.queries).toHaveLength(1);
+    expect(r.queries.map((q) => q.q)).toEqual(['a question']);
   });
 
-  it('cancelling or leaving the key blank stops without a question', async () => {
+  it('first run without a key: the intro line shows with the question prompt', async () => {
     const r = rig();
     r.state.key = false;
-    r.typed.push(null);
+    r.state.intro = false;
+    r.typed.push('a question', 'sk-ant-abc');
     await r.flow.ask();
-    expect(r.prompts).toHaveLength(1);
+    expect(r.prompts[0].text).toBe('line:intro');
+    expect(r.log.filter((l) => l === 'introSeen')).toHaveLength(1);
+  });
+
+  it('cancelling or leaving the key blank stops without sending the question', async () => {
+    const r = rig();
+    r.state.key = false;
+    r.typed.push('q', null);
+    await r.flow.ask();
+    expect(r.prompts).toHaveLength(2);
     expect(r.queries).toHaveLength(0);
-    r.typed.push('   ');
+    r.typed.push('q', '   ');
     await r.flow.ask();
     expect(r.state.savedKeys).toEqual([]);
+    expect(r.queries).toHaveLength(0);
   });
 
   it('a failed keychain write is reported and stops', async () => {
     const r = rig();
     r.state.key = false;
     r.state.saveOk = false;
-    r.typed.push('sk-ant-abc');
+    r.typed.push('q', 'sk-ant-abc');
     await r.flow.ask();
     expect(r.log.some((l) => l.startsWith('say:') && l.includes('keyFailed'))).toBe(true);
     expect(r.queries).toHaveLength(0);
@@ -350,5 +365,93 @@ describe('AskFlow: being taken over', () => {
     r.history.add('q', 'a');
     r.flow.reset();
     expect(r.history.turns()).toEqual([]);
+  });
+});
+
+describe('AskFlow: local answers (intents)', () => {
+  it('a local answer needs no key and no network: Reply/Done like an AI answer, with its animation', async () => {
+    const r = rig();
+    r.state.key = false;
+    r.typed.push('who made you');
+    r.locals.push({ reply: 'Annuai!', anim: 'Wave' });
+    await r.flow.ask();
+    expect(r.log).toEqual(['prompt', 'local:who made you', 'choose:Annuai!|reply,done|Wave']);
+    expect(r.queries).toHaveLength(0);
+    expect(r.prompts).toHaveLength(1); // no key prompt
+    expect(r.flow.state).toBe('idle');
+  });
+
+  it('the first-run intro line still shows before a local answer, and counts as seen', async () => {
+    const r = rig();
+    r.state.key = false;
+    r.state.intro = false;
+    r.typed.push('help');
+    r.locals.push({ reply: 'I can do things.' });
+    await r.flow.ask();
+    expect(r.prompts[0].text).toBe('line:intro');
+    expect(r.state.intro).toBe(true);
+  });
+
+  it('the exchange joins the history, so an AI follow-up has the context', async () => {
+    const r = rig();
+    r.typed.push('who made you', 'and where is he from?');
+    r.locals.push({ reply: 'Annuai built me.' });
+    r.choices.push('reply', 'done');
+    r.results.push(ok('Somewhere nice.'));
+    await r.flow.ask();
+    expect(r.queries).toHaveLength(1);
+    expect(r.queries[0].turns).toEqual([{ role: 'user', text: 'who made you' }, { role: 'assistant', text: 'Annuai built me.' }]);
+    expect(r.prompts[1].text).toBe('line:again');
+  });
+
+  it('passes the attribution on, and Done ends it', async () => {
+    const r = rig();
+    r.typed.push('quote');
+    r.locals.push({ reply: 'Be kind.', attribution: 'Someone' });
+    let seen: unknown;
+    const orig = r.flow as unknown as { deps: AskDeps };
+    const choose = orig.deps.choose;
+    orig.deps.choose = async (t, a, o) => { seen = o; return choose(t, a, o); };
+    await r.flow.ask();
+    expect(seen).toEqual({ attribution: 'Someone', anim: undefined });
+  });
+
+  it('an answer with a follow-up says it, then acts, then ends the conversation (no Reply/Done)', async () => {
+    const r = rig();
+    r.typed.push('go away');
+    r.locals.push({ reply: 'Bye!', after: async () => { r.log.push('after'); } });
+    await r.flow.ask();
+    expect(r.log).toEqual(['prompt', 'local:go away', 'say:Bye!', 'after']);
+    expect(r.history.turns()).toEqual([{ role: 'user', text: 'go away' }, { role: 'assistant', text: 'Bye!' }]);
+    expect(r.flow.state).toBe('idle');
+  });
+
+  it('a question that is not local behaves as before (key, thinking, query)', async () => {
+    const r = rig();
+    r.typed.push('why is the sky blue');
+    r.locals.push(null);
+    await r.flow.ask();
+    expect(r.log).toEqual(['prompt', 'local:why is the sky blue', 'think', 'query', 'settle', 'choose:default answer|reply,done']);
+  });
+
+  it('a local follow-up works inside a running conversation', async () => {
+    const r = rig();
+    r.typed.push('why is the sky blue', 'tell me a joke');
+    r.locals.push(null, { reply: 'A joke.' });
+    r.choices.push('reply', 'done');
+    await r.flow.ask();
+    expect(r.queries).toHaveLength(1);
+    expect(r.log[r.log.length - 1]).toBe('choose:A joke.|reply,done');
+  });
+
+  it('is dropped quietly when something else took over while it ran', async () => {
+    const r = rig();
+    r.typed.push('hide');
+    r.locals.push({ reply: 'Bye!', after: async () => { r.log.push('after'); } });
+    const orig = r.flow as unknown as { deps: AskDeps };
+    const local = orig.deps.local!;
+    orig.deps.local = async (q) => { const a = await local(q); r.state.epoch++; return a; };
+    await r.flow.ask();
+    expect(r.log).not.toContain('after');
   });
 });
