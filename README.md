@@ -110,8 +110,8 @@ Releases are built by GitHub Actions (`.github/workflows/release.yml`) from a ve
 
 1. Bump the version in all three places, to the same number: `version` in `src-tauri/tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml` (then run `cargo check --manifest-path src-tauri/Cargo.toml` or `npm install` so the lock files follow).
 2. Commit, then tag and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
-3. The workflow builds macOS (universal), Windows and Linux, and creates a **draft** release with the installers, the signed updater bundles and `latest.json`.
-4. Check the draft, then publish it. Publishing is what makes `latest.json` the "latest" one, so existing installs start to see the update.
+3. The workflow builds macOS (universal), Windows and Linux into a draft release with the installers, the signed updater bundles and `latest.json`.
+4. When all three platforms succeed, the workflow publishes the release on its own, and existing installs start to see the update. If a platform fails, the release stays a draft: fix the problem and re-run the failed job in GitHub Actions, and it publishes once everything is green.
 5. Optional: update the Homebrew cask (see `packaging/README.md`).
 
 ### GitHub secrets

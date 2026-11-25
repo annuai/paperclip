@@ -18,7 +18,7 @@ The release repo (`annuai/paperclip`) must be public, or Homebrew cannot downloa
 
 ### Every release
 
-After the draft release is published (see "Releases" in the main README):
+After the release is published (it publishes itself once every platform builds; see "Releases" in the main README):
 
 1. Download the universal dmg, `Paperclip_<version>_universal.dmg`, from the release.
 2. Get its checksum:
