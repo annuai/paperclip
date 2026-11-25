@@ -20,11 +20,13 @@ export interface Settings {
   style: Style; // visual skin, default 'classic'
   water: WaterSettings;
   greetOnUnlock: boolean; // say hello when the screen is unlocked (default on)
+  hideWhenPresenting: boolean; // slip away while another app is full screen / presenting (default on)
+  reactToMusic: boolean; // dance now and then while audio is playing (default on)
 }
 
 export const DEFAULT_WATER: WaterSettings = { enabled: true, intervalMin: DEFAULT_INTERVAL, lastReminderAt: null, glasses: 0, glassesDate: '' };
 
-export const DEFAULTS: Settings = { quiet: false, scheduler: {}, position: null, hidden: false, style: DEFAULT_STYLE, water: DEFAULT_WATER, greetOnUnlock: true };
+export const DEFAULTS: Settings = { quiet: false, scheduler: {}, position: null, hidden: false, style: DEFAULT_STYLE, water: DEFAULT_WATER, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true };
 
 /** Validate raw persisted values (anything can be in the store file) into a Settings object. */
 export function parseSettings(raw: Record<string, unknown>): Settings {
@@ -42,6 +44,8 @@ export function parseSettings(raw: Record<string, unknown>): Settings {
     style: normalizeStyle(raw.style),
     water: parseWater(raw.water),
     greetOnUnlock: raw.greetOnUnlock !== false,
+    hideWhenPresenting: raw.hideWhenPresenting !== false,
+    reactToMusic: raw.reactToMusic !== false,
   };
 }
 

@@ -20,7 +20,7 @@ describe('skins', () => {
   it('props keep the inner <g> the renderer transforms', () => {
     for (const svg of [PAPERCLIP_SVG_CLASSIC, PAPERCLIP_SVG_FLAT]) {
       const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-      for (const id of ['pencil', 'bulb', 'question', 'sparkles']) {
+      for (const id of ['pencil', 'bulb', 'question', 'sparkles', 'glass', 'sweat']) {
         expect(doc.getElementById(id)?.firstElementChild?.tagName).toBe('g');
       }
     }

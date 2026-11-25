@@ -15,6 +15,8 @@ pub struct TrayHandles {
     water_intervals: Vec<(u32, CheckMenuItem<Wry>)>,
     water_info: MenuItem<Wry>,
     greet: CheckMenuItem<Wry>,
+    hide_presenting: CheckMenuItem<Wry>,
+    react_to_music: CheckMenuItem<Wry>,
 }
 
 #[derive(Clone, Serialize)]
@@ -51,6 +53,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     water_items.push(&water_info);
     let water_menu = Submenu::with_items(app, "Water reminders", true, &water_items)?;
     let greet = CheckMenuItem::with_id(app, "greet", "Greet me when I unlock", true, true, None::<&str>)?;
+    let hide_presenting = CheckMenuItem::with_id(app, "presence-hide", "Hide when presenting", true, true, None::<&str>)?;
+    let react_to_music = CheckMenuItem::with_id(app, "presence-music", "Dance to music", true, true, None::<&str>)?;
+    let presence_menu = Submenu::with_items(app, "Presence", true, &[&hide_presenting, &react_to_music])?;
     let nap = MenuItem::with_id(app, "nap", "Take a nap", true, None::<&str>)?;
     let quiet = CheckMenuItem::with_id(app, "quiet", "Quiet mode", true, false, None::<&str>)?;
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
@@ -61,7 +66,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let sep3 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[&toggle, &sep1, &hi, &joke, &quote, &animate, &nap, &sep2, &quiet, &greet, &style_menu, &water_menu, &autostart, &sep3, &quit],
+        &[&toggle, &sep1, &hi, &joke, &quote, &animate, &nap, &sep2, &quiet, &greet, &presence_menu, &style_menu, &water_menu, &autostart, &sep3, &quit],
     )?;
 
     app.manage(TrayHandles {
@@ -74,6 +79,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         water_intervals: water_intervals.clone(),
         water_info: water_info.clone(),
         greet: greet.clone(),
+        hide_presenting: hide_presenting.clone(),
+        react_to_music: react_to_music.clone(),
     });
 
     let mut builder = TrayIconBuilder::with_id("main").tooltip("Paperclip").menu(&menu);
@@ -137,6 +144,14 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                         let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked: None });
                     }
                 }
+                "presence-hide" => {
+                    let checked = hide_presenting.is_checked().ok();
+                    let _ = app.emit("tray-action", TrayAction { id: "presence-hide".to_string(), checked });
+                }
+                "presence-music" => {
+                    let checked = react_to_music.is_checked().ok();
+                    let _ = app.emit("tray-action", TrayAction { id: "presence-music".to_string(), checked });
+                }
                 "greet" => {
                     let checked = greet.is_checked().ok();
                     let _ = app.emit("tray-action", TrayAction { id: "greet".to_string(), checked });
@@ -172,6 +187,8 @@ pub struct TraySync {
     water_interval: u32,
     glasses: u32,
     greet: bool,
+    hide_presenting: bool,
+    react_to_music: bool,
 }
 
 #[tauri::command]
@@ -193,5 +210,7 @@ pub fn sync_tray(state: State<'_, TrayHandles>, sync: TraySync) -> Result<(), St
     let label = if sync.glasses == 1 { "Today: 1 glass".to_string() } else { format!("Today: {} glasses", sync.glasses) };
     state.water_info.set_text(label).map_err(|e| e.to_string())?;
     state.greet.set_checked(sync.greet).map_err(|e| e.to_string())?;
+    state.hide_presenting.set_checked(sync.hide_presenting).map_err(|e| e.to_string())?;
+    state.react_to_music.set_checked(sync.react_to_music).map_err(|e| e.to_string())?;
     state.quiet.set_checked(sync.quiet).map_err(|e| e.to_string())
 }

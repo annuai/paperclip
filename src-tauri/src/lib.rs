@@ -1,5 +1,6 @@
 mod clickthrough;
 mod session;
+mod system;
 mod tray;
 
 /// True when PAPERCLIP_DEBUG_HIT=1: the frontend outlines the interactive hit rects.
@@ -25,6 +26,7 @@ pub fn run() {
             clickthrough::set_hit_rects,
             clickthrough::set_eye_follow,
             tray::sync_tray,
+            system::get_system,
             quit_app,
             debug_hit
         ])
@@ -34,6 +36,7 @@ pub fn run() {
             tray::build(app.handle())?;
             clickthrough::spawn_poller(app.handle().clone());
             session::start(app.handle());
+            system::start(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())

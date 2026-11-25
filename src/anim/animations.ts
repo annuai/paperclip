@@ -201,6 +201,42 @@ export const ANIMATIONS: Record<AnimName, Animation> = {
     f(150, P(brows(-7), { eyes: { sx: 1.06, sy: 1.06 } })),
     f(120),
     f(160, {}) ] },
+  // ---- Presence reactions (phase 1): all end at NEUTRAL ----
+  Tired: { frames: [ // low battery: heavy lids, drooping brows, a slow slump and a sigh (~2.4 s)
+    f(320, P(brows(4, -7), lids(0.5), body({ tilt: 5, squash: 0.95, y: 1 }), look(0, 0.5))),
+    f(520, P(brows(5, -9), lids(0.72), body({ tilt: 10, squash: 0.9, y: 4 }), look(0, 0.7), mat({ squash: 0.98 }))),
+    f(380, P(brows(3, -6), lids(0.3), body({ tilt: 3, squash: 1.05, y: -2 }), mouth(0.3), mat({ squash: 1 }))), // sigh: inhale
+    f(480, P(brows(5, -9), lids(0.75), body({ tilt: 9, squash: 0.9, y: 4 }), mouth(0.15), look(0.3, 0.7), mat({ squash: 0.98 }))), // exhale
+    f(260, P(brows(3, -5), lids(0.4), body({ tilt: 4, squash: 0.96 }))),
+    f(220, {}) ] },
+  Sweat: { frames: [ // CPU pegged: worried brows, darting eyes, a sweat drop runs down, then relief (~2.2 s)
+    f(160, P(brows(-4, -10), look(-0.8, 0.2), prop('sweat', { v: 0.6 }), body({ squash: 0.97 }))),
+    f(300, P(brows(-5, -10), look(0.8, 0.2), prop('sweat', { y: 10 }), body({ tilt: 2, squash: 0.96 }), mouth(0.12))),
+    f(300, P(brows(-5, -10), look(-0.8, 0.3), prop('sweat', { y: 22 }), body({ tilt: -2, squash: 0.96 }), mouth(0.12))),
+    f(280, P(brows(-4, -9), look(0.6, 0.2), prop('sweat', { v: 0.6, y: 34 }), body({ tilt: 2, squash: 0.97 }))),
+    f(260, P(brows(-2, -4), lids(0.35), prop('sweat', { v: 0, y: 44 }), body({ squash: 1.06, y: -3 }), mouth(0.3))), // phew
+    f(320, P(brows(-1), lids(0.25), body({ squash: 1.02 }))),
+    f(200, {}) ] },
+  Dance: { frames: [ // music is playing: sway, bounce and sparkles on the beat (~2.7 s)
+    f(110, P(body({ squash: 0.88, y: 3 }), brows(-4), mat({ squash: 0.95 }))),
+    f(220, P(body({ tilt: -12, x: -8, y: -14, squash: 1.1 }), brows(-8), mouth(0.4), lids(0.25), prop('sparkles', { rot: 20 })), { ease: 'out' }),
+    f(160, P(body({ tilt: -8, x: -5, y: 2, squash: 0.9 }), brows(-6), lids(0.3), prop('sparkles', { rot: 40 }), mat({ squash: 0.96 })), { ease: 'in' }),
+    f(220, P(body({ tilt: 12, x: 8, y: -14, squash: 1.1 }), brows(-8), mouth(0.4), lids(0.25), prop('sparkles', { rot: 70 })), { ease: 'out' }),
+    f(160, P(body({ tilt: 8, x: 5, y: 2, squash: 0.9 }), brows(-6), lids(0.3), prop('sparkles', { rot: 90 }), mat({ squash: 0.96 })), { ease: 'in' }),
+    f(220, P(body({ tilt: -12, x: -8, y: -14, squash: 1.1 }), brows(-8), mouth(0.4), lids(0.25), prop('sparkles', { rot: 120 })), { ease: 'out' }),
+    f(160, P(body({ tilt: -8, x: -5, y: 2, squash: 0.9 }), brows(-6), lids(0.3), prop('sparkles', { rot: 140 }), mat({ squash: 0.96 })), { ease: 'in' }),
+    f(220, P(body({ tilt: 12, x: 8, y: -14, squash: 1.1 }), brows(-8), mouth(0.4), lids(0.25), prop('sparkles', { rot: 170 })), { ease: 'out' }),
+    f(160, P(body({ tilt: 8, x: 5, y: 2, squash: 0.9 }), brows(-6), lids(0.3), prop('sparkles', { rot: 190 }), mat({ squash: 0.96 })), { ease: 'in' }),
+    f(260, P(body({ y: -18, squash: 1.18 }), brows(-9), mouth(0.6), prop('sparkles', { rot: 230 })), { ease: 'out' }), // big finish hop
+    f(150, P(body({ y: 3, squash: 0.86 }), brows(-3), mat({ squash: 0.93 })), { ease: 'in' }),
+    f(180, {}) ] },
+  Yawn: { frames: [ // late night: stretch, a huge yawn with squeezed eyes, blink it off (~2.4 s)
+    f(260, P(brows(-7), mouth(0.4), look(0, -0.4), body({ squash: 1.05 }))),
+    f(520, P(brows(-9), mouth(1), lids(0.6), body({ squash: 1.13, y: -5 }), { eyes: { sy: 0.9 } })),
+    f(460, P(brows(-8), mouth(0.9), lids(0.8), body({ squash: 1.12, y: -5 }), { eyes: { sy: 0.88 } })),
+    f(300, P(brows(3, -6), mouth(0.25), lids(0.85), body({ tilt: 4, squash: 0.95 }))),
+    f(260, P(brows(1, -3), lids(0.2), body({ squash: 1.02 }))),
+    f(200, {}) ] },
   Jump: { frames: [
     f(80,  P(body({ squash: 0.8, y: 4 }), brows(3), lids(0.25), mat({ squash: 0.88 }))),                     // crouch, mat dips
     f(130, P(body({ squash: 1.2, y: -40 }), brows(-9), mouth(0.6), mat({ squash: 1.04 })), { ease: 'out' }), // launch, mat springs back

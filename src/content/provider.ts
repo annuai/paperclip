@@ -6,10 +6,11 @@ import dizzy from './dizzy.json';
 import sleep from './sleep.json';
 import hydration from './hydration.json';
 import thanks from './thanks.json';
+import presence from './presence.json';
 import { ShuffleBag } from '../util/shuffleBag';
 import type { Rng } from '../util/rng';
 
-export type ContentKind = 'greeting' | 'quote' | 'joke' | 'tip' | 'dizzy' | 'sleep' | 'hydration' | 'thanks';
+export type ContentKind = 'greeting' | 'quote' | 'joke' | 'tip' | 'dizzy' | 'sleep' | 'hydration' | 'thanks' | 'lowBattery' | 'overheating' | 'lateNight';
 export interface ContentItem { kind: ContentKind; text: string; attribution?: string }
 export interface ContentProvider { next(kind: ContentKind, ctx?: { now?: Date }): Promise<ContentItem> }
 
@@ -32,6 +33,7 @@ export class LocalContentProvider implements ContentProvider {
   private readonly sleepBag: ShuffleBag<string>;
   private readonly hydrationBag: ShuffleBag<string>;
   private readonly thanksBag: ShuffleBag<string>;
+  private readonly presenceBags: Record<'lowBattery' | 'overheating' | 'lateNight', ShuffleBag<string>>;
 
   constructor(rng: Rng = Math.random) {
     const byPeriod = (p: Period) => greetings.filter((g) => g.period === p).map((g) => g.text);
@@ -48,6 +50,12 @@ export class LocalContentProvider implements ContentProvider {
     this.sleepBag = new ShuffleBag(sleep.map((t) => t.text), rng);
     this.hydrationBag = new ShuffleBag(hydration.map((t) => t.text), rng);
     this.thanksBag = new ShuffleBag(thanks.map((t) => t.text), rng);
+    const ofKind = (k: string) => presence.filter((l) => l.kind === k).map((l) => l.text);
+    this.presenceBags = {
+      lowBattery: new ShuffleBag(ofKind('lowBattery'), rng),
+      overheating: new ShuffleBag(ofKind('overheating'), rng),
+      lateNight: new ShuffleBag(ofKind('lateNight'), rng),
+    };
   }
 
   async next(kind: ContentKind, ctx?: { now?: Date }): Promise<ContentItem> {
@@ -70,6 +78,10 @@ export class LocalContentProvider implements ContentProvider {
         return { kind, text: this.hydrationBag.next() };
       case 'thanks':
         return { kind, text: this.thanksBag.next() };
+      case 'lowBattery':
+      case 'overheating':
+      case 'lateNight':
+        return { kind, text: this.presenceBags[kind].next() };
     }
   }
 }

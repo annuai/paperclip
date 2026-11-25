@@ -13,6 +13,7 @@ export interface MenuItem {
 
 const W = 180;
 const SUB_W = 160;
+const MAX_H = 374; // the stage is 380px tall: a longer main menu scrolls instead of being cut off
 const ROW_H = 26; // visual row height is themed in CSS; used only for clamping (flat rows are 30px)
 const CHECK_SVG =
   '<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><path d="M2 6.5 L5 9.5 L10 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -64,10 +65,12 @@ export class ContextMenu {
     for (const it of items) {
       height += this.addRow(this.el, it, () => this.openSub(it)) + (it.separatorBefore ? 7 : 0);
     }
+    height = Math.min(height, MAX_H);
     const maxX = Math.max(0, 320 - W - 2);
     const maxY = Math.max(0, 380 - height - 6);
     this.el.style.left = Math.min(Math.max(0, x), maxX) + 'px';
     this.el.style.top = Math.min(Math.max(0, y), maxY) + 'px';
+    this.el.scrollTop = 0;
     this.open_ = true;
     this.level = 'main';
     requestAnimationFrame(() => this.onVisibility(true));
@@ -140,6 +143,7 @@ export class ContextMenu {
     const host = row.parentElement as HTMLElement;
     for (const r of this.rows(host)) r.classList.toggle('active', r === row);
     row.focus({ preventScroll: true });
+    if (host === this.el) row.scrollIntoView?.({ block: 'nearest' });
   }
 
   private openSub(it: MenuItem, focusFirst = false): void {
@@ -164,7 +168,7 @@ export class ContextMenu {
     this.sub.style.left = subX + 'px';
     this.sub.style.width = SUB_W + 'px';
     this.sub.classList.remove('hidden');
-    this.sub.style.top = Math.max(2, Math.min(my + row.offsetTop, 380 - this.sub.offsetHeight - 4)) + 'px';
+    this.sub.style.top = Math.max(2, Math.min(my + row.offsetTop - this.el.scrollTop, 380 - this.sub.offsetHeight - 4)) + 'px';
     this.subItem = row;
     row.classList.add('sub-open');
     this.onVisibility(true);

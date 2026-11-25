@@ -41,3 +41,22 @@ describe('greet-on-unlock setting', () => {
     expect(parseSettings({ greetOnUnlock: true }).greetOnUnlock).toBe(true);
   });
 });
+
+describe('presence settings', () => {
+  it('hide-when-presenting and react-to-music are on by default', () => {
+    expect(DEFAULTS.hideWhenPresenting).toBe(true);
+    expect(DEFAULTS.reactToMusic).toBe(true);
+    const s = parseSettings({});
+    expect(s.hideWhenPresenting).toBe(true);
+    expect(s.reactToMusic).toBe(true);
+  });
+  it('persist an explicit off and an explicit on; junk falls back to on', () => {
+    expect(parseSettings({ hideWhenPresenting: false }).hideWhenPresenting).toBe(false);
+    expect(parseSettings({ reactToMusic: false }).reactToMusic).toBe(false);
+    expect(parseSettings({ hideWhenPresenting: true, reactToMusic: true })).toMatchObject({ hideWhenPresenting: true, reactToMusic: true });
+    expect(parseSettings({ hideWhenPresenting: 'no', reactToMusic: 0 })).toMatchObject({ hideWhenPresenting: true, reactToMusic: true });
+  });
+  it('does not disturb the other settings', () => {
+    expect(parseSettings({ hideWhenPresenting: false, quiet: true, style: 'flat' })).toMatchObject({ quiet: true, style: 'flat', greetOnUnlock: true });
+  });
+});

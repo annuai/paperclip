@@ -140,6 +140,46 @@ describe('Drink', () => {
   });
 });
 
+describe('presence animations', () => {
+  async function runFull(n: AnimName) {
+    const h = harness();
+    const p = h.animator.play(ANIMATIONS[n]);
+    let t = 0;
+    let sweat = 0;
+    let mouth = 0;
+    let lids = 0;
+    while (h.animator.animating && t < 4000) {
+      h.advance(16);
+      t += 16;
+      sweat = Math.max(sweat, h.animator.pose.props.sweat.v);
+      mouth = Math.max(mouth, h.animator.pose.mouth);
+      lids = Math.max(lids, h.animator.pose.lids.l);
+    }
+    await p;
+    return { t, sweat, mouth, lids, pose: h.animator.pose };
+  }
+  it('Sweat shows the drop mid-way, then hides it and ends neutral within 3 s', async () => {
+    const r = await runFull('Sweat');
+    expect(r.sweat).toBe(1);
+    expect(r.pose.props.sweat.v).toBe(0);
+    expect(poseEquals(r.pose, NEUTRAL)).toBe(true);
+    expect(r.t).toBeLessThan(3000);
+  });
+  it('Tired droops the lids; Yawn opens the mouth wide; Dance uses sparkles; all end neutral', async () => {
+    const tired = await runFull('Tired');
+    expect(tired.lids).toBeGreaterThan(0.7);
+    const yawn = await runFull('Yawn');
+    expect(yawn.mouth).toBe(1);
+    const dance = await runFull('Dance');
+    expect(dance.pose.props.sparkles.v).toBe(0);
+    for (const r of [tired, yawn, dance]) {
+      expect(poseEquals(r.pose, NEUTRAL)).toBe(true);
+      expect(r.t).toBeGreaterThan(1500);
+      expect(r.t).toBeLessThan(3000);
+    }
+  });
+});
+
 describe('reduced motion', () => {
   it('damps bounces but not enter/exit, and keeps blinks', () => {
     const h = harness();
@@ -162,12 +202,12 @@ describe('reduced motion', () => {
 
 describe('animation catalogue', () => {
   const names = Object.keys(ANIMATIONS) as AnimName[];
-  it('has all 27 names', () => {
+  it('has all 31 names', () => {
     expect(names.sort()).toEqual([
       'Blink', 'Congratulate', 'Dizzy', 'EnterPop', 'EnterSlide', 'EnterTumble', 'ExitRollUp', 'ExitSpring',
       'Drink', 'Noticed', 'ExitWave', 'Explain', 'FallAsleep', 'GetAttention', 'Greeting', 'IdleEyeRoll', 'IdleHeadScratch', 'Jump',
       'IdleSideToSide', 'LookDown', 'LookLeft', 'LookRight', 'LookUp', 'Sleeping', 'Thinking', 'WakeUp', 'Wave',
-      'Writing',
+      'Writing', 'Tired', 'Sweat', 'Dance', 'Yawn',
     ].sort());
     for (const n of [...IDLE_ANIMS, ...SHOWY_ANIMS, ...ENTER_ANIMS, ...EXIT_ANIMS]) expect(ANIMATIONS[n]).toBeDefined();
     expect(ENTER_ANIMS.length).toBeGreaterThanOrEqual(3);

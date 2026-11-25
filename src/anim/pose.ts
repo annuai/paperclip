@@ -7,7 +7,7 @@ export interface Pose {
   lids: { l: number; r: number };
   browL: { angle: number; lift: number };
   browR: { angle: number; lift: number };
-  props: { pencil: PropState; bulb: PropState; question: PropState; sparkles: PropState; glass: PropState };
+  props: { pencil: PropState; bulb: PropState; question: PropState; sparkles: PropState; glass: PropState; sweat: PropState };
   mouth: number; // 0 closed .. 1 wide open (yawn)
   mat: { x: number; y: number; rot: number; scale: number; squash: number; unroll: number; visible: number };
   opacity: number;
@@ -26,7 +26,7 @@ function makeNeutral(): Pose {
     lids: { l: 0, r: 0 },
     browL: { angle: 0, lift: 0 },
     browR: { angle: 0, lift: 0 },
-    props: { pencil: prop(), bulb: prop(), question: prop(), sparkles: prop(), glass: prop() },
+    props: { pencil: prop(), bulb: prop(), question: prop(), sparkles: prop(), glass: prop(), sweat: prop() },
     mouth: 0,
     mat: { x: 0, y: 0, rot: 0, scale: 1, squash: 1, unroll: 1, visible: 1 },
     opacity: 1,

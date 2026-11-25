@@ -7,6 +7,7 @@ import dizzy from './dizzy.json';
 import sleep from './sleep.json';
 import hydration from './hydration.json';
 import thanks from './thanks.json';
+import presence from './presence.json';
 import { LocalContentProvider, periodOf } from './provider';
 import { mulberry32 } from '../util/rng';
 
@@ -28,11 +29,20 @@ describe('content', () => {
     expect(tips).toHaveLength(20);
   });
   it('texts are non-empty, <=180 chars and unique', () => {
-    [greetings, quotes, jokes, tips, dizzy, sleep, hydration, thanks].forEach(valid);
+    [greetings, quotes, jokes, tips, dizzy, sleep, hydration, thanks, presence].forEach(valid);
     expect(hydration.length).toBeGreaterThanOrEqual(15);
     expect(hydration.every((x) => x.text.length <= 100)).toBe(true); // must fit the balloon with its buttons
     expect(sleep.length).toBeGreaterThanOrEqual(10);
     expect(dizzy.length).toBeGreaterThanOrEqual(10);
+  });
+  it('presence lines: 10 per kind, balloon-sized, in his voice', () => {
+    for (const k of ['lowBattery', 'overheating', 'lateNight']) {
+      const lines = presence.filter((l) => l.kind === k);
+      expect(lines.length, k).toBeGreaterThanOrEqual(10);
+      expect(lines.every((l) => l.text.length <= 110), k).toBe(true);
+    }
+    expect(presence.every((l) => ['lowBattery', 'overheating', 'lateNight'].includes(l.kind))).toBe(true);
+    expect(presence.filter((l) => l.text.startsWith("It looks like you're")).length).toBeGreaterThanOrEqual(6);
   });
   it('tips and quotes have the right shape', () => {
     expect(tips.every((t) => t.text.startsWith("It looks like you're"))).toBe(true);
@@ -54,6 +64,10 @@ describe('content', () => {
     expect((await p.next('quote')).attribution).toBeTruthy();
     expect((await p.next('joke')).kind).toBe('joke');
     expect((await p.next('tip')).text.startsWith("It looks like")).toBe(true);
+    for (const k of ['lowBattery', 'overheating', 'lateNight'] as const) {
+      const item = await p.next(k);
+      expect(presence.filter((l) => l.kind === k).map((l) => l.text)).toContain(item.text);
+    }
     const g = await p.next('greeting', { now: new Date(2026, 0, 1, 8, 0) });
     expect(greetings.filter((x) => x.period === 'morning').map((x) => x.text)).toContain(g.text);
   });

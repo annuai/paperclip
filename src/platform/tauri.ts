@@ -35,6 +35,21 @@ export async function setEyeFollow(enabled: boolean): Promise<void> {
 export async function onCursor(cb: (p: { x: number; y: number }) => void): Promise<() => void> {
   return listen<{ x: number; y: number }>('cursor', (e) => cb(e.payload));
 }
+export interface SystemInfo {
+  fullscreen: boolean;
+  batteryPct: number | null;
+  charging: boolean | null;
+  cpuPct: number;
+  audioPlaying: boolean;
+  idleSecs: number;
+}
+/** Emitted by the Rust sampler (5 s cadence, only when something changed). */
+export async function onSystem(cb: (s: SystemInfo) => void): Promise<() => void> {
+  return listen<SystemInfo>('system', (e) => cb(e.payload));
+}
+export async function getSystem(): Promise<SystemInfo | undefined> {
+  return guard('get_system', () => invoke<SystemInfo>('get_system'));
+}
 export async function syncTray(
   visible: boolean,
   quiet: boolean,
@@ -42,10 +57,11 @@ export async function syncTray(
   style = 'classic',
   water = { enabled: true, intervalMin: 45, glasses: 0 },
   greet = true,
+  presence = { hidePresenting: true, music: true },
 ): Promise<void> {
   await guard('sync_tray', () =>
     invoke('sync_tray', {
-      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet },
+      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music },
     }),
   );
 }

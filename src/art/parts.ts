@@ -4,7 +4,7 @@ export const WIRE_PATH =
 /** Element ids the renderer looks up. Every skin must expose all of them (checked by a unit test). */
 export const REQUIRED_IDS = [
   'root', 'shadow', 'body', 'eyes', 'pupilL', 'pupilR', 'lidL', 'lidR', 'browL', 'browR',
-  'pencil', 'bulb', 'question', 'sparkles', 'glass', 'mouth', 'mat', 'matInner', 'matSheet', 'matRoll', 'wireOutline',
+  'pencil', 'bulb', 'question', 'sparkles', 'glass', 'sweat', 'mouth', 'mat', 'matInner', 'matSheet', 'matRoll', 'wireOutline',
 ] as const;
 
 /** Classic skin: original parametric paperclip (gradients + outlines). Ids are what the renderer grabs. */
@@ -96,6 +96,10 @@ export const PAPERCLIP_SVG_CLASSIC = `<svg id="pc" viewBox="-50 -40 240 290" wid
         <path transform="translate(18 10)" d="M 0 -7 Q 1 -1 7 0 Q 1 1 0 7 Q -1 1 -7 0 Q -1 -1 0 -7 Z" fill="#ffd54a"/>
         <path transform="translate(118 4) scale(0.7)" d="M 0 -7 Q 1 -1 7 0 Q 1 1 0 7 Q -1 1 -7 0 Q -1 -1 0 -7 Z" fill="#ffd54a"/>
         <path transform="translate(124 60) scale(0.5)" d="M 0 -7 Q 1 -1 7 0 Q 1 1 0 7 Q -1 1 -7 0 Q -1 -1 0 -7 Z" fill="#ffd54a"/></g></g>
+      <g id="sweat"><g><g transform="scale(1.5)">
+        <path d="M 0 -10 C 4 -4 7 -1 7 3.5 A 7 7 0 0 1 -7 3.5 C -7 -1 -4 -4 0 -10 Z" fill="url(#waterGrad)" stroke="#2f7fb0" stroke-width="1.2" stroke-linejoin="round"/>
+        <path d="M -3.2 2 Q -3.4 5 -1 6.4" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity="0.85"/>
+        <path transform="translate(-15 -6) scale(0.5)" d="M 0 -10 C 4 -4 7 -1 7 3.5 A 7 7 0 0 1 -7 3.5 C -7 -1 -4 -4 0 -10 Z" fill="url(#waterGrad)" stroke="#2f7fb0" stroke-width="2" stroke-linejoin="round"/></g></g></g>
     </g>
   </g>
 </svg>`;
@@ -173,6 +177,10 @@ export const PAPERCLIP_SVG_FLAT = `<svg id="pc" viewBox="-50 -40 240 290" width=
         <path transform="translate(18 10)" d="M 0 -8 L 2 -2 L 8 0 L 2 2 L 0 8 L -2 2 L -8 0 L -2 -2 Z" fill="#F2B33D"/>
         <path transform="translate(118 4) scale(0.75)" d="M 0 -8 L 2 -2 L 8 0 L 2 2 L 0 8 L -2 2 L -8 0 L -2 -2 Z" fill="#F4F1EA"/>
         <path transform="translate(124 60) scale(0.55)" d="M 0 -8 L 2 -2 L 8 0 L 2 2 L 0 8 L -2 2 L -8 0 L -2 -2 Z" fill="#F2B33D"/></g></g>
+      <g id="sweat"><g><g transform="scale(1.5)">
+        <path d="M 0 -10 C 4 -4 7 -1 7 3.5 A 7 7 0 0 1 -7 3.5 C -7 -1 -4 -4 0 -10 Z" fill="#4FA3D9"/>
+        <path d="M 0 -10 C -4 -4 -7 -1 -7 3.5 A 7 7 0 0 0 -0.2 10.5 C -2.5 6 -2.6 -1 0 -10 Z" fill="#8CC8EC"/>
+        <path transform="translate(-15 -6) scale(0.5)" d="M 0 -10 C 4 -4 7 -1 7 3.5 A 7 7 0 0 1 -7 3.5 C -7 -1 -4 -4 0 -10 Z" fill="#4FA3D9"/></g></g></g>
     </g>
   </g>
 </svg>`;

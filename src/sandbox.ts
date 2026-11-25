@@ -89,7 +89,7 @@ export function runSandbox(): void {
   panel.append(log);
 
   // ?sandbox&compare&shot=<scene>: static, chrome-free scenes for README screenshots
-  // (see scripts/screenshots.sh). Scenes: quote | water | sleep | jump | dizzy.
+  // (see scripts/screenshots.sh). Scenes: quote | water | sleep | jump | dizzy | sweat | tired | dance | yawn.
   const shot = q.get('shot');
   if (shot) {
     panel.style.display = 'none';
@@ -108,6 +108,10 @@ export function runSandbox(): void {
       animator.setPose(frame('Jump', 2));
     } else if (shot === 'dizzy') {
       animator.setPose(frame('Dizzy', 0));
+    } else if (shot === 'sweat' || shot === 'tired' || shot === 'dance' || shot === 'yawn') {
+      // presence reactions: a representative mid-animation frame
+      const at = { sweat: 2, tired: 1, dance: 1, yawn: 1 }[shot];
+      animator.setPose(frame(shot === 'sweat' ? 'Sweat' : shot === 'tired' ? 'Tired' : shot === 'dance' ? 'Dance' : 'Yawn', at));
     } else {
       speakAll('Imagination is more important than knowledge.', 'Albert Einstein');
     }

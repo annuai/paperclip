@@ -14,4 +14,5 @@ export type AnimName =
   | 'EnterTumble' | 'EnterSlide' | 'EnterPop' | 'ExitWave' | 'ExitRollUp' | 'ExitSpring'
   | 'FallAsleep' | 'Sleeping' | 'WakeUp' | 'Greeting' | 'Wave' | 'Blink' | 'LookLeft' | 'LookRight' | 'LookUp'
   | 'LookDown' | 'Thinking' | 'Writing' | 'GetAttention' | 'Explain' | 'Congratulate'
-  | 'IdleEyeRoll' | 'IdleSideToSide' | 'IdleHeadScratch' | 'Dizzy' | 'Jump' | 'Drink' | 'Noticed';
+  | 'IdleEyeRoll' | 'IdleSideToSide' | 'IdleHeadScratch' | 'Dizzy' | 'Jump' | 'Drink' | 'Noticed'
+  | 'Tired' | 'Sweat' | 'Dance' | 'Yawn';

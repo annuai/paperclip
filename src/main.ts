@@ -7,12 +7,14 @@ import type { Style } from './art/style';
 import { HydrationScheduler, INTERVAL_OPTIONS } from './agent/hydration';
 import type { IntervalMin } from './agent/hydration';
 import { DEFAULT_SLEEP, SleepController } from './agent/sleep';
+import { Presence } from './agent/presence';
+import type { PresenceCtx, Reaction } from './agent/presence';
 import { DEFAULT_SCHEDULER, IdleScheduler } from './agent/scheduler';
 import { Renderer } from './art/renderer';
 import { LocalContentProvider } from './content/provider';
 import type { ContentKind, ContentProvider } from './content/provider';
 import { loadSettings, restorePosition, saveSettings, trackPosition } from './platform/settings';
-import { getDebugHit, onCursor, onSessionUnlocked, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import { getDebugHit, getSystem, onCursor, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
 import { WelcomeBack, WelcomeLines } from './agent/welcomeBack';
 import { EyeFollow, EyeTracker, characterClick, computeTarget } from './agent/eyeFollow';
 import type { Pose } from './anim/pose';
@@ -39,6 +41,8 @@ async function boot(): Promise<void> {
   const settings = await loadSettings();
   let quiet = settings.quiet;
   let greetOnUnlock = settings.greetOnUnlock;
+  let hideWhenPresenting = settings.hideWhenPresenting;
+  let reactToMusic = settings.reactToMusic;
 
   const charEl = document.getElementById('character') as HTMLElement;
   let style: Style = settings.style;
@@ -84,6 +88,8 @@ async function boot(): Promise<void> {
   const agent = new Agent({ animator, balloon, win });
   agent.onIdle(updateHit);
   const content: ContentProvider = new LocalContentProvider();
+  // System awareness (full screen, battery, CPU, audio, night): pure rules, executed by runReactions below.
+  const presence = new Presence({ hideWhenPresenting, reactToMusic });
 
   const speakKind = async (kind: ContentKind): Promise<void> => {
     const item = await content.next(kind);
@@ -119,7 +125,7 @@ async function boot(): Promise<void> {
     {
       blink: () => void agent.play('Blink'),
       idleAnim: () => {
-        if (!sleep.maybeIdleSleep()) void agent.play(pick(Math.random, IDLE_ANIMS));
+        if (!sleep.maybeIdleSleep()) void agent.play(presence.idleAnim(presenceCtx()) ?? pick(Math.random, IDLE_ANIMS));
       },
       talk: () => void speakRandom(),
       // Eye-follow pauses idle animations and chatter, but blinks continue.
@@ -238,7 +244,7 @@ async function boot(): Promise<void> {
       enabled: hydration.config.enabled,
       intervalMin: hydration.config.intervalMin,
       glasses: hydration.glassesToday,
-    }, greetOnUnlock);
+    }, greetOnUnlock, { hidePresenting: hideWhenPresenting, music: reactToMusic });
   sleep.onChange(() => {
     if (sleep.sleeping) follow.end('sleep');
     sync();
@@ -265,7 +271,9 @@ async function boot(): Promise<void> {
     sync();
   };
 
-  const hideNow = async () => {
+  // `auto` = Presence hid/showed him (full screen): not a user choice, so it is never persisted.
+  const hideNow = async (auto = false) => {
+    if (!auto) presence.userChangedVisibility();
     follow.end('hide');
     sleep.reset();
     sleep.stop();
@@ -275,11 +283,12 @@ async function boot(): Promise<void> {
     await agent.hide();
     scheduler.stop();
     sync(false);
-    void saveSettings({ hidden: true });
+    if (!auto) void saveSettings({ hidden: true });
   };
-  const showNow = async () => {
+  const showNow = async (auto = false) => {
+    if (!auto) presence.userChangedVisibility();
     sync(true);
-    void saveSettings({ hidden: false });
+    if (!auto) void saveSettings({ hidden: false });
     await agent.show();
     scheduler.start();
     sleep.start();
@@ -287,9 +296,38 @@ async function boot(): Promise<void> {
     updateHit();
   };
 
+  const presenceCtx = (): PresenceCtx => ({
+    now: Date.now(),
+    hidden: agent.hidden,
+    quiet,
+    busy: agent.busy || balloon.visible || menu.visible || sleep.sleeping || reminderOpen || follow.active,
+  });
+  const runReactions = (reactions: Reaction[]): void => {
+    for (const r of reactions) {
+      if (r.type === 'hide') void hideNow(true);
+      else if (r.type === 'show') void showNow(true);
+      else {
+        if (r.anim) void agent.play(r.anim);
+        if (r.speak) {
+          void content.next(r.line)
+            .then((item) => agent.speak(item.text))
+            .catch((e) => console.warn('presence line failed', e));
+        }
+      }
+    }
+  };
+  // The Rust sampler only emits on change, so a slow heartbeat drives the time-based rules (CPU for 30 s, a line
+  // that had to wait for a quiet moment). 10 s is far above the 1 s polling ceiling and costs nothing while idle.
+  const PRESENCE_TICK_MS = 10_000;
+  const startPresence = (): void => {
+    void onSystem((s) => runReactions(presence.update(s, presenceCtx()))).catch((e) => console.warn('system listener failed', e));
+    void getSystem().then((s) => { if (s) runReactions(presence.update(s, presenceCtx())); });
+    setInterval(() => runReactions(presence.tick(presenceCtx())), PRESENCE_TICK_MS);
+  };
+
   async function runCommand(id: string, checked?: boolean): Promise<void> {
     try {
-      if (sleep.sleeping && !['nap', 'tray-click', 'style-classic', 'style-flat', 'quit', 'hide', 'toggle', 'quiet', 'greet'].includes(id) && !id.startsWith('water-')) await sleep.wake('command');
+      if (sleep.sleeping && !['nap', 'tray-click', 'style-classic', 'style-flat', 'quit', 'hide', 'toggle', 'quiet', 'greet'].includes(id) && !id.startsWith('water-') && !id.startsWith('presence-')) await sleep.wake('command');
       switch (id) {
         case 'style-classic':
         case 'style-flat':
@@ -352,6 +390,18 @@ async function boot(): Promise<void> {
           void saveSettings({ greetOnUnlock });
           sync();
           return;
+        case 'presence-hide':
+          hideWhenPresenting = checked ?? !hideWhenPresenting;
+          void saveSettings({ hideWhenPresenting });
+          runReactions(presence.setConfig({ hideWhenPresenting, reactToMusic }, presenceCtx()));
+          sync();
+          return;
+        case 'presence-music':
+          reactToMusic = checked ?? !reactToMusic;
+          void saveSettings({ reactToMusic });
+          presence.setConfig({ hideWhenPresenting, reactToMusic }, presenceCtx());
+          sync();
+          return;
         case 'hide':
           await hideNow();
           return;
@@ -386,6 +436,13 @@ async function boot(): Promise<void> {
     { id: 'nap', label: sleep.sleeping ? 'Wake up' : 'Take a nap' },
     { id: 'quiet', label: 'Quiet mode', checked: quiet, separatorBefore: true },
     { id: 'greet', label: 'Greet me when I unlock', checked: greetOnUnlock },
+    {
+      id: 'presence', label: 'Presence',
+      children: [
+        { id: 'presence-hide', label: 'Hide when presenting', role: 'checkbox', checked: hideWhenPresenting },
+        { id: 'presence-music', label: 'Dance to music', role: 'checkbox', checked: reactToMusic },
+      ],
+    },
     {
       id: 'style', label: 'Style', separatorBefore: false,
       children: [
@@ -498,6 +555,7 @@ async function boot(): Promise<void> {
     // User left Paperclip hidden in the tray last time: start hidden, tray left-click summons him.
     await agent.hide();
     sync(false);
+    startPresence();
     return;
   }
   void agent.show();
@@ -507,6 +565,7 @@ async function boot(): Promise<void> {
   sleep.start();
   hydration.start();
   sync(true);
+  startPresence();
 }
 
 void boot().catch((e) => console.warn('boot failed', e));

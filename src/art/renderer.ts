@@ -10,8 +10,9 @@ const PROP_ANCHORS = {
   bulb: { x: 70, y: -14, rot: 0 },
   question: { x: 114, y: 22, rot: 0 },
   glass: { x: 114, y: 118, rot: 0 },
+  sweat: { x: 112, y: 40, rot: 0 },
 } as const;
-type PropKey = 'pencil' | 'bulb' | 'question' | 'sparkles' | 'glass';
+type PropKey = 'pencil' | 'bulb' | 'question' | 'sparkles' | 'glass' | 'sweat';
 
 const r = (n: number): string => String(Math.round(n * 1000) / 1000);
 
@@ -52,7 +53,7 @@ export class Renderer {
     for (const id of REQUIRED_IDS) this.els[id] = get(id);
     this.shade = this.svg.querySelector<SVGElement>('#wireShade');
     const innerOf = (k: PropKey) => this.els[k].firstElementChild as SVGElement;
-    this.inner = { pencil: innerOf('pencil'), bulb: innerOf('bulb'), question: innerOf('question'), sparkles: innerOf('sparkles'), glass: innerOf('glass') };
+    this.inner = { pencil: innerOf('pencil'), bulb: innerOf('bulb'), question: innerOf('question'), sparkles: innerOf('sparkles'), glass: innerOf('glass'), sweat: innerOf('sweat') };
     this.setSleeping(this.sleeping);
   }
 
@@ -83,7 +84,7 @@ export class Renderer {
     this.set(e.lidR, 'height', r(28 * p.lids.r));
     this.set(e.browL, 'transform', `translate(57 ${r(58 + p.browL.lift)}) rotate(${r(p.browL.angle)})`);
     this.set(e.browR, 'transform', `translate(85 ${r(56 + p.browR.lift)}) rotate(${r(-p.browR.angle)})`);
-    for (const k of ['pencil', 'bulb', 'question', 'sparkles', 'glass'] as PropKey[]) this.renderProp(k, p.props[k]);
+    for (const k of ['pencil', 'bulb', 'question', 'sparkles', 'glass', 'sweat'] as PropKey[]) this.renderProp(k, p.props[k]);
     // Flat skin: the single hard shade run drifts with body tilt so the form still reads as an object.
     if (this.shade) this.set(this.shade, 'transform', `translate(${r(p.body.tilt * 0.08)} 0)`);
     this.renderMouth(p.mouth);
