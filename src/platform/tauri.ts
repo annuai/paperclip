@@ -42,6 +42,16 @@ export async function setEyeFollow(enabled: boolean): Promise<void> {
 export async function onCursor(cb: (p: { x: number; y: number }) => void): Promise<() => void> {
   return listen<{ x: number; y: number }>('cursor', (e) => cb(e.payload));
 }
+/** While the menu is open, Rust streams the cursor (`menu-pointer`) and reports clicks outside Paperclip (`outside-press`). */
+export async function setMenuTracking(enabled: boolean): Promise<void> {
+  await guard('set_menu_tracking', () => invoke('set_menu_tracking', { enabled }));
+}
+export async function onMenuPointer(cb: (p: { x: number; y: number }) => void): Promise<() => void> {
+  return listen<{ x: number; y: number }>('menu-pointer', (e) => cb(e.payload));
+}
+export async function onOutsidePress(cb: () => void): Promise<() => void> {
+  return listen('outside-press', () => cb());
+}
 export interface SystemInfo {
   fullscreen: boolean;
   batteryPct: number | null;

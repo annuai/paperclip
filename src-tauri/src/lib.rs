@@ -37,6 +37,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             clickthrough::set_hit_rects,
             clickthrough::set_eye_follow,
+            clickthrough::set_menu_tracking,
             tray::sync_tray,
             system::get_system,
             calendar::calendar_status,

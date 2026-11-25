@@ -58,7 +58,6 @@ html, body {
 .menu { max-height: 374px; overflow-y: auto; scrollbar-width: none; }
 .menu::-webkit-scrollbar { display: none; }
 .menu .item { height: 26px; line-height: 26px; padding: 0 12px; display: flex; justify-content: space-between; box-sizing: border-box; }
-.menu .item:hover { background: #2f7de1; color: #fff; }
 .menu .sep { height: 1px; background: #cfcfcf; margin: 3px 0; }
 
 .zzz { display: none; position: absolute; left: 118px; top: 52px; pointer-events: none; font-weight: 700; color: #4f6fb0; }
@@ -114,7 +113,6 @@ html, body {
   text-transform: uppercase; letter-spacing: 0.05em; box-shadow: 0 8px 20px -6px rgba(10, 14, 22, 0.35);
 }
 [data-style="flat"] .menu .item { height: 30px; line-height: 30px; padding: 0 12px; align-items: center; }
-[data-style="flat"] .menu .item:hover,
 [data-style="flat"] .menu .item.active,
 [data-style="flat"] .menu .item:focus,
 [data-style="flat"] .menu .item.sub-open { background: #f2b33d; color: #18202e; }

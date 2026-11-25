@@ -27,7 +27,7 @@ import type { FilesDropped } from './platform/tauri';
 import { LocalContentProvider } from './content/provider';
 import type { ContentKind, ContentProvider } from './content/provider';
 import { loadSettings, locateWindow, restorePosition, saveSettings, savePosition, trackPosition, windowSize } from './platform/settings';
-import { askQuestion, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import { askQuestion, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMenuPointer, onOutsidePress, setMenuTracking, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
 import type { SystemInfo } from './platform/tauri';
 import { WelcomeBack, WelcomeLines } from './agent/welcomeBack';
 import { EyeFollow, EyeTracker, characterClick, computeTarget } from './agent/eyeFollow';
@@ -129,9 +129,12 @@ async function boot(): Promise<void> {
   window.addEventListener('focus', () => { if (promptAbandon !== null) { clearTimeout(promptAbandon); promptAbandon = null; } });
   const menu = new ContextMenu(menuEl, (id) => void runCommand(id), (v) => {
     hit.set('menu', v ? menu.rect() : null);
-    if (v) void keyFocus.acquire('menu');
-    else keyFocus.release('menu');
+    // Hover and click-outside come from the Rust cursor poller: macOS often won't let the window become the active
+    // one, and then the web view gets neither mouse-move events nor a blur.
+    void setMenuTracking(v);
   });
+  void onMenuPointer((p) => menu.pointAt(p.x, p.y));
+  void onOutsidePress(() => menu.close());
 
   const agent = new Agent({ animator, balloon, win });
   agent.onIdle(updateHit);

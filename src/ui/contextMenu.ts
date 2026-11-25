@@ -44,6 +44,28 @@ export class ContextMenu {
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  private pointed: HTMLElement | null = null;
+
+  /**
+   * The cursor is at (x, y) in window CSS px, as reported by the Rust poller. On macOS the window is often not the
+   * active one, and then the web view gets no mouse-move events, so hover is driven from here as well. Pointing at a
+   * row behaves exactly like the mouse entering it (highlight, open its submenu).
+   */
+  pointAt(x: number, y: number): void {
+    if (!this.open_) return;
+    const hit = document.elementFromPoint(x, y);
+    const row = hit instanceof Element ? (hit.closest('.item') as HTMLElement | null) : null;
+    if (!row || !this.contains(row) || row.classList.contains('disabled')) {
+      // Off the rows: drop the highlight, like a native menu (the row whose submenu is open stays marked by .sub-open).
+      if (this.pointed) for (const r of [...this.rows(this.el), ...this.rows(this.sub)]) r.classList.remove('active');
+      this.pointed = null;
+      return;
+    }
+    if (row === this.pointed) return;
+    this.pointed = row;
+    row.dispatchEvent(new MouseEvent('mouseenter'));
+  }
+
   get visible(): boolean {
     return this.open_;
   }
@@ -60,6 +82,7 @@ export class ContextMenu {
   }
 
   open(x: number, y: number, items: MenuItem[]): void {
+    this.pointed = null;
     this.closeSub();
     this.sub?.remove();
     this.sub = null;
@@ -82,6 +105,7 @@ export class ContextMenu {
   }
 
   close(): void {
+    this.pointed = null;
     if (!this.open_) return;
     this.open_ = false;
     this.closeSub();

@@ -32,6 +32,44 @@ pub struct HitState {
     pub rects: Mutex<Vec<HitRect>>,
     /// Eye-follow: while true the poller streams the global cursor position to the frontend.
     pub follow: AtomicBool,
+    /// Menu open: the poller streams the cursor (`menu-pointer`) and reports clicks outside the hit rects
+    /// (`outside-press`). macOS often refuses to make the window active, and then the web view gets neither
+    /// mouse-move events (no hover) nor a blur (no click-outside-to-close), so the menu cannot rely on them.
+    pub menu: AtomicBool,
+}
+
+#[tauri::command]
+pub fn set_menu_tracking(state: State<'_, Arc<HitState>>, enabled: bool) {
+    state.menu.store(enabled, Ordering::Relaxed);
+}
+
+/// True on the poll where a mouse button went down while the cursor was outside every hit rect.
+pub fn pressed_outside(was_down: bool, is_down: bool, inside: bool) -> bool {
+    is_down && !was_down && !inside
+}
+
+/// Whether any mouse button (left, right, middle) is down right now, system-wide. Needs no permission.
+#[cfg(target_os = "macos")]
+fn any_button_down() -> bool {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGEventSourceButtonState(state_id: i32, button: u32) -> bool;
+    }
+    const COMBINED_SESSION_STATE: i32 = 0;
+    // SAFETY: a pure query of the input state; no pointers involved.
+    (0..3).any(|b| unsafe { CGEventSourceButtonState(COMBINED_SESSION_STATE, b) })
+}
+
+#[cfg(windows)]
+fn any_button_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON};
+    // SAFETY: GetAsyncKeyState only reads the key state.
+    [VK_LBUTTON, VK_RBUTTON, VK_MBUTTON].iter().any(|k| unsafe { GetAsyncKeyState(i32::from(k.0)) } as u16 & 0x8000 != 0)
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn any_button_down() -> bool {
+    false // Linux: no portable global button state; the in-window click and blur still close the menu
 }
 
 #[derive(Clone, Copy, serde::Serialize)]
@@ -123,6 +161,8 @@ pub fn spawn_poller(app: AppHandle) {
             }
         }
         let mut last_sent: Option<(f64, f64)> = None;
+        let mut last_menu_sent: Option<(f64, f64)> = None;
+        let mut was_down = false;
         let mut geom = Geometry {
             size: tauri::PhysicalSize::new(0, 0),
             scale: 1.0,
@@ -151,6 +191,21 @@ pub fn spawn_poller(app: AppHandle) {
                         } else {
                             last_sent = None;
                         }
+                        if state.menu.load(Ordering::Relaxed) {
+                            sleep_ms = 16; // ~60 Hz while the menu is open: hover must feel immediate
+                            if last_menu_sent != Some((lx, ly)) {
+                                last_menu_sent = Some((lx, ly));
+                                let _ = app.emit_to("main", "menu-pointer", CursorPayload { x: lx, y: ly });
+                            }
+                            let down = any_button_down();
+                            if pressed_outside(was_down, down, inside) {
+                                let _ = app.emit_to("main", "outside-press", ());
+                            }
+                            was_down = down;
+                        } else {
+                            last_menu_sent = None;
+                            was_down = false;
+                        }
                     }
                     Ok(None) => {
                         // hidden: make sure we are not left interactive
@@ -171,4 +226,22 @@ pub fn spawn_poller(app: AppHandle) {
             std::thread::sleep(Duration::from_millis(sleep_ms));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pressed_outside;
+
+    #[test]
+    fn a_press_outside_counts_once_on_the_way_down() {
+        assert!(pressed_outside(false, true, false));
+        assert!(!pressed_outside(true, true, false), "held button: not a new press");
+        assert!(!pressed_outside(true, false, false), "release is not a press");
+        assert!(!pressed_outside(false, false, false));
+    }
+
+    #[test]
+    fn a_press_inside_paperclip_is_left_to_the_web_view() {
+        assert!(!pressed_outside(false, true, true));
+    }
 }

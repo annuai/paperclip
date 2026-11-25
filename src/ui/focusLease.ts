@@ -2,10 +2,10 @@
  * Who currently needs the window to be the key (active) window.
  *
  * The window is `focus: false`, so normally another app stays active. On macOS a web view in a non-key window gets no
- * hover (mouse-moved) events and never sees a blur when you click elsewhere. So the menu (hover highlight,
- * click-outside-to-close) and Ask Paperclip's text input (typing) each take a lease while open. The window takes focus
- * on the first lease and gives it back when the last one ends. The give-back is delayed a little, so a hand-over
- * (picking "Ask a question…" closes the menu, then the input opens) doesn't flicker focus away and back.
+ * hover (mouse-moved) events and never sees a blur when you click elsewhere. Ask Paperclip's text input needs the
+ * keyboard, so it takes a lease while open. The window takes focus on the first lease and gives it back when the last
+ * one ends, a little later so a quick hand-over doesn't flicker. (The menu no longer relies on focus: macOS often
+ * ignores the activation request, so it is driven by the Rust cursor poller instead.)
  */
 export type LeaseHolder = 'menu' | 'prompt';
 
