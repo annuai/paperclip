@@ -1,0 +1,62 @@
+[
+  {
+    "period": "morning",
+    "text": "Good morning! I've been holding things together since sunrise."
+  },
+  {
+    "period": "morning",
+    "text": "Rise and shine! Today looks like a great day to get a few things clipped together."
+  },
+  {
+    "period": "morning",
+    "text": "Morning! Coffee first, then world domination. Or just emails."
+  },
+  {
+    "period": "morning",
+    "text": "Hello, early bird! Let's make today a good one."
+  },
+  {
+    "period": "afternoon",
+    "text": "Good afternoon! Still holding it all together over here."
+  },
+  {
+    "period": "afternoon",
+    "text": "Hi there! Half the day is gone and you're still going. Nicely done."
+  },
+  {
+    "period": "afternoon",
+    "text": "Afternoon! A quick stretch might do you some good."
+  },
+  {
+    "period": "afternoon",
+    "text": "Hello again! I was just hanging around. Get it?"
+  },
+  {
+    "period": "evening",
+    "text": "Good evening! Time to wind things down, perhaps?"
+  },
+  {
+    "period": "evening",
+    "text": "Evening! You've earned a little break, I'd say."
+  },
+  {
+    "period": "evening",
+    "text": "Hi! The day's nearly done. Let's tie up any loose ends."
+  },
+  {
+    "period": "evening",
+    "text": "Hello there! Burning the evening oil, I see."
+  },
+  {
+    "period": "night",
+    "text": "Still up? Don't forget to rest, even paperclips need to unbend."
+  },
+  {
+    "period": "night",
+    "text": "Hello, night owl! I'll keep you company."
+  },
+  {
+    "period": "night",
+    "text": "It's late! Let's wrap up soon, shall we?"
+  }
+]

@@ -1,0 +1,90 @@
+[
+  {
+    "group": "short",
+    "text": "Oh hey, you're back!"
+  },
+  {
+    "group": "short",
+    "text": "That was quick. Miss me already?"
+  },
+  {
+    "group": "short",
+    "text": "Back so soon? I barely had time to stretch."
+  },
+  {
+    "group": "short",
+    "text": "Welcome back! I held your place."
+  },
+  {
+    "group": "medium",
+    "text": "Welcome back! I kept your desktop warm."
+  },
+  {
+    "group": "medium",
+    "text": "There you are! I only dozed off a little."
+  },
+  {
+    "group": "medium",
+    "text": "Back from your break? Good timing, I was running out of fidgets."
+  },
+  {
+    "group": "medium",
+    "text": "Hello again! Everything stayed right where you left it."
+  },
+  {
+    "group": "medium",
+    "text": "Ah, the return of the human. Welcome back!"
+  },
+  {
+    "group": "long",
+    "text": "Wow, that was a while! Welcome back."
+  },
+  {
+    "group": "long",
+    "text": "Look who's here! I was about to file a missing-person report."
+  },
+  {
+    "group": "long",
+    "text": "You're back! I kept everything neatly clipped together."
+  },
+  {
+    "group": "long",
+    "text": "Hello, stranger! The desktop was very quiet without you."
+  },
+  {
+    "group": "long",
+    "text": "Welcome back! I counted every pixel while you were away."
+  },
+  {
+    "group": "morning",
+    "text": "Good morning! Ready to crush it?"
+  },
+  {
+    "group": "morning",
+    "text": "Morning! Coffee first, then greatness."
+  },
+  {
+    "group": "morning",
+    "text": "Rise and shine! I've been up since the first pixel."
+  },
+  {
+    "group": "morning",
+    "text": "Good morning! Today looks well-organised already."
+  },
+  {
+    "group": "morning",
+    "text": "Top of the morning! Shall we get clipping?"
+  },
+  {
+    "group": "morning",
+    "text": "Good morning, early bird. I saved you a good spot."
+  },
+  {
+    "group": "short",
+    "text": "Welcome back! Did you miss the clip?"
+  },
+  {
+    "group": "long",
+    "text": "Long time no see! Did you bring snacks?"
+  }
+]

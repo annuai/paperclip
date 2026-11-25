@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-25T00:00:00Z",
+  "title": "Design System: Paperclip (Flat style)",
+  "extensions": {
+    "colorMeta": {
+      "ink": {"role": "primary", "displayName": "Ink", "canonical": "#18202E"},
+      "marigold": {"role": "primary", "displayName": "Marigold", "canonical": "#F2B33D"},
+      "wire-steel": {"role": "secondary", "displayName": "Steel Wire", "canonical": "#8394AB"},
+      "wire-shade": {"role": "secondary", "displayName": "Wire Shade", "canonical": "#5F7088"},
+      "wire-glint": {"role": "secondary", "displayName": "Wire Glint", "canonical": "#E6ECF3"},
+      "ochre": {"role": "secondary", "displayName": "Ochre", "canonical": "#C98A1E"},
+      "marigold-light": {"role": "secondary", "displayName": "Marigold Light", "canonical": "#F7C964"},
+      "coral": {"role": "tertiary", "displayName": "Coral", "canonical": "#E5705A"},
+      "paper": {"role": "neutral", "displayName": "Paper", "canonical": "#F4F1EA"}
+    },
+    "typographyMeta": {
+      "balloon": {"displayName": "Balloon text", "purpose": "Speech content."},
+      "attribution": {"displayName": "Attribution", "purpose": "Uppercase tracked quote source."},
+      "menu-label": {"displayName": "Menu label", "purpose": "Context menu rows."}
+    },
+    "shadows": [
+      {"name": "panel-lift", "value": "0 8px 20px -6px rgba(10,14,22,0.35)", "purpose": "Lifts balloon and menu off any wallpaper."},
+      {"name": "ground-shadow", "value": "Ink ellipse at 14% opacity, no blur", "purpose": "Character and mat contact shadow."}
+    ],
+    "motion": [
+      {"name": "balloon-fade", "value": "opacity 150ms linear", "purpose": "Balloon dismissal; removed under reduced motion."},
+      {"name": "zzz-float", "value": "3.5s linear infinite", "purpose": "Sleep letters drift."}
+    ]
+  },
+  "components": [
+    {
+      "name": "Speech Balloon", "kind": "custom", "refersTo": "balloon",
+      "description": "Ink speech panel with Oswald text and flat tail.",
+      "html": "<div class=\"ds-balloon\">Hello there.<div class=\"ds-attr\">Anonymous</div></div>",
+      "css": ".ds-balloon{position:relative;background:#18202E;color:#F4F1EA;border-radius:14px;font:400 15px/1.4 Oswald,system-ui,sans-serif;padding:10px 30px 10px 16px;box-shadow:0 8px 20px -6px rgba(10,14,22,.35);max-width:250px}.ds-balloon::after{content:\"\";position:absolute;right:82px;bottom:-10px;border:0 solid transparent;border-width:11px 9px 0 9px;border-top-color:#18202E}.ds-attr{font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#F2B33D;margin-top:6px}"
+    },
+    {
+      "name": "Context Menu", "kind": "nav", "refersTo": "menu",
+      "description": "Ink menu with Marigold hover rows.",
+      "html": "<div class=\"ds-menu\"><div class=\"ds-item\">Style</div><div class=\"ds-item ds-hot\">Sleep</div></div>",
+      "css": ".ds-menu{width:180px;padding:5px 0;background:#18202E;color:#F4F1EA;border-radius:10px;font:400 13px Oswald,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.05em}.ds-item{height:30px;line-height:30px;padding:0 12px}.ds-item:hover,.ds-hot{background:#F2B33D;color:#18202E}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Same Clip, a Sharper Suit",
+    "overview": "Mid-century geometric flat illustration with Swiss-poster Oswald. One base colour plus one hard shade per form; personality through geometry and expression.",
+    "keyCharacteristics": ["Solid fills only", "One base + one hard shade per form", "Ink panels, Marigold accent", "Oswald everywhere in Flat UI"],
+    "rules": [
+      {"name": "The One Shade Rule", "body": "Each form carries its base colour and exactly one hard-edged shade shape.", "section": "colors"},
+      {"name": "The Socket Rule", "body": "Eye whites sit in a Steel-shade socket behind Paper.", "section": "colors"},
+      {"name": "The Paper Keyline Rule", "body": "Brows and mouth carry a Paper underlay for dark wallpapers.", "section": "colors"},
+      {"name": "The Rare Coral Rule", "body": "Coral is tongue and eraser only.", "section": "colors"},
+      {"name": "The Hard-Shade Rule", "body": "Depth on the character is a second flat shape, never blur, gradient, or outline.", "section": "elevation"}
+    ],
+    "dos": ["Do keep every Flat fill solid and every form to one base plus one hard shade.", "Do use Paper underlays behind Ink features near the wallpaper.", "Do set UI text in Oswald.", "Do keep all REQUIRED_IDS in any new skin.", "Do use Marigold as the sole interactive and accent colour."],
+    "donts": ["Don't add gradients, filters, blur, or outline strokes to the Flat character.", "Don't use Coral beyond tongue and eraser.", "Don't copy Microsoft Clippy or clippy.js artwork.", "Don't change Classic when editing Flat."]
+  }
+}
