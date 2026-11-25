@@ -87,5 +87,31 @@ export function runSandbox(): void {
   mk('Balloon short', () => speakAll('Imagination is more important than knowledge.', 'Albert Einstein'));
   if (!compare) mk('Toggle style', () => renderers[0].setStyle(renderers[0].style === 'flat' ? 'classic' : 'flat'));
   panel.append(log);
+
+  // ?sandbox&compare&shot=<scene>: static, chrome-free scenes for README screenshots
+  // (see scripts/screenshots.sh). Scenes: quote | water | sleep | jump | dizzy.
+  const shot = q.get('shot');
+  if (shot) {
+    panel.style.display = 'none';
+    const bg = '#' + (q.get('bg') ?? 'E9ECF1');
+    document.documentElement.style.background = bg;
+    document.body.style.background = bg;
+    document.querySelectorAll<HTMLElement>('#stage').forEach((s) => { s.style.outline = 'none'; });
+    const frame = (n: AnimName, i: number) => mergePose(NEUTRAL, ANIMATIONS[n].frames[i].pose ?? {});
+    if (shot === 'water') {
+      const actions = [{ id: 'drank', label: 'Drank some' }, { id: 'later', label: 'Later' }];
+      balloons.forEach((b) => void b.speak('Hydration check! Your brain is mostly water. Top it up?', undefined, actions));
+    } else if (shot === 'sleep') {
+      animator.setPose(mergePose(NEUTRAL, SLEEP_POSE));
+      renderers.forEach((r) => r.setSleeping(true));
+    } else if (shot === 'jump') {
+      animator.setPose(frame('Jump', 2));
+    } else if (shot === 'dizzy') {
+      animator.setPose(frame('Dizzy', 0));
+    } else {
+      speakAll('Imagination is more important than knowledge.', 'Albert Einstein');
+    }
+    return;
+  }
   if (compare) speakAll('Imagination is more important than knowledge.', 'Albert Einstein');
 }
