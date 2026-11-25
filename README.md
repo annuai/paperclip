@@ -56,6 +56,14 @@ Left-clicking the menu-bar icon brings him back if you've hidden him.
 
 ## Install
 
+### macOS with Homebrew (easiest)
+
+```bash
+brew tap annuai/tap && brew trust annuai/tap && brew install --cask annuai/tap/paperclip
+```
+
+The first time, right-click Paperclip in Applications and choose **Open** (the app isn't signed yet).
+
 ### macOS (Apple Silicon)
 
 1. Build the installer (see [Build from source](#build-from-source)), or get `Paperclip_0.2.0_aarch64.dmg` from whoever shared it with you.
