@@ -58,7 +58,7 @@ Left-clicking the menu-bar icon brings him back if you've hidden him.
 
 ### macOS (Apple Silicon)
 
-1. Build the installer (see [Build from source](#build-from-source)), or get `Paperclip_0.1.0_aarch64.dmg` from whoever shared it with you.
+1. Build the installer (see [Build from source](#build-from-source)), or get `Paperclip_0.2.0_aarch64.dmg` from whoever shared it with you.
 2. Open the `.dmg` and drag **Paperclip** into **Applications**.
 3. The app isn't signed yet, so macOS blocks the first launch. Right-click Paperclip in Applications, choose **Open**, then confirm **Open**. You only need to do this once.
 
