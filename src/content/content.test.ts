@@ -12,6 +12,7 @@ import stretch from './stretch.json';
 import focus from './focus.json';
 import meeting from './meeting.json';
 import files from './files.json';
+import ask from './ask.json';
 import { LocalContentProvider, periodOf } from './provider';
 import { mulberry32 } from '../util/rng';
 
@@ -33,7 +34,7 @@ describe('content', () => {
     expect(tips).toHaveLength(20);
   });
   it('texts are non-empty, <=180 chars and unique', () => {
-    [greetings, quotes, jokes, tips, dizzy, sleep, hydration, thanks, presence, stretch, focus, meeting, files].forEach(valid);
+    [greetings, quotes, jokes, tips, dizzy, sleep, hydration, thanks, presence, stretch, focus, meeting, files, ask].forEach(valid);
     expect(hydration.length).toBeGreaterThanOrEqual(15);
     expect(hydration.every((x) => x.text.length <= 100)).toBe(true); // must fit the balloon with its buttons
     expect(sleep.length).toBeGreaterThanOrEqual(10);
@@ -63,6 +64,15 @@ describe('content', () => {
       expect(l.length, k).toBeGreaterThanOrEqual(min);
       expect(l.every((x) => x.text.length <= 100), k).toBe(true);
     }
+  });
+  it('ask lines: variety per kind, fit the balloon with an input row, and the intro states the privacy promise', () => {
+    for (const [k, min] of [['intro', 2], ['prompt', 3], ['again', 3], ['keyPrompt', 2], ['keySaved', 2], ['keyRemoved', 2], ['keyFailed', 2]] as const) {
+      const l = ask.filter((x) => x.kind === k);
+      expect(l.length, k).toBeGreaterThanOrEqual(min);
+      expect(l.every((x) => x.text.length <= 100), k).toBe(true);
+    }
+    expect(ask.filter((x) => x.kind === 'intro').every((x) => /only/i.test(x.text) && /claude/i.test(x.text))).toBe(true);
+    expect(ask.filter((x) => x.kind === 'keyPrompt').every((x) => /keychain/i.test(x.text))).toBe(true);
   });
   it('meeting templates use {when} and {title} exactly once and fit with a 48 char title', () => {
     for (const m of meeting) {

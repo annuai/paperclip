@@ -7,14 +7,26 @@ const base: MenuState = {
   sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, outfits: true, style: 'classic',
   water: { enabled: true, intervalMin: 45, glassesToday: 2 },
   stretch: { enabled: true, everyMin: 60 }, focusLeft: null, calendarSupported: true, meetingHeadsUp: false,
+  ask: { keySet: false, model: 'claude-haiku-5-5' },
 };
 const flat = (items: MenuItem[]): MenuItem[] => items.flatMap((i) => [i, ...flat(i.children ?? [])]);
 const find = (items: MenuItem[], id: string) => flat(items).find((i) => i.id === id);
 
 describe('main menu', () => {
-  it('has 13 top-level rows: wellbeing replaced the water row, nothing was added', () => {
+  it('has 14 top-level rows: the single new row is "Ask Paperclip" (a headline action; its key and model settings are inside it)', () => {
     const m = buildMenu(base);
-    expect(m.map((i) => i.id)).toEqual(['hi', 'joke', 'quote', 'tip', 'animate', 'nap', 'quiet', 'greet', 'presence', 'style', 'wellbeing', 'hide', 'quit']);
+    expect(m.map((i) => i.id)).toEqual(['hi', 'joke', 'quote', 'tip', 'ask', 'animate', 'nap', 'quiet', 'greet', 'presence', 'style', 'wellbeing', 'hide', 'quit']);
+  });
+
+  it('Ask Paperclip: ask, set key, model radios; "Remove API key" only once a key is stored', () => {
+    expect(find(buildMenu(base), 'ask')?.children?.map((c) => c.id)).toEqual(['ask-open', 'ask-key', 'ask-model-haiku', 'ask-model-sonnet']);
+    const withKey = buildMenu({ ...base, ask: { keySet: true, model: 'claude-sonnet-5-5' } });
+    expect(find(withKey, 'ask')?.children?.map((c) => c.id)).toEqual(['ask-open', 'ask-key', 'ask-remove', 'ask-model-haiku', 'ask-model-sonnet']);
+    expect(find(withKey, 'ask-model-sonnet')?.checked).toBe(true);
+    expect(find(withKey, 'ask-model-haiku')?.checked).toBe(false);
+    expect(find(buildMenu(base), 'ask-model-haiku')?.checked).toBe(true);
+    expect(find(buildMenu(base), 'ask-open')?.label).toBe('Ask a question…');
+    expect(find(buildMenu(base), 'ask-key')?.label).toBe('Set Claude API key…');
   });
 
   it('groups water, stretch, focus and meeting heads-up under Wellbeing', () => {

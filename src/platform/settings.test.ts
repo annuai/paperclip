@@ -95,3 +95,20 @@ describe('outfits setting', () => {
     expect(parseSettings({ outfits: 'santa-hat' }).outfits).toBe('auto');
   });
 });
+
+describe('ask settings', () => {
+  it('defaults: Haiku, intro not yet shown', () => {
+    expect(DEFAULTS.askModel).toBe('claude-haiku-5-5');
+    expect(DEFAULTS.askIntroSeen).toBe(false);
+    expect(parseSettings({}).askModel).toBe('claude-haiku-5-5');
+  });
+  it('accepts only the two known models and a literal true intro flag', () => {
+    expect(parseSettings({ askModel: 'claude-sonnet-5-5' }).askModel).toBe('claude-sonnet-5-5');
+    expect(parseSettings({ askModel: 'claude-opus-5-5' }).askModel).toBe('claude-haiku-5-5');
+    expect(parseSettings({ askIntroSeen: true }).askIntroSeen).toBe(true);
+    expect(parseSettings({ askIntroSeen: 'yes' }).askIntroSeen).toBe(false);
+  });
+  it('no API key field exists in settings (it lives in the keychain)', () => {
+    expect(Object.keys(parseSettings({ apiKey: 'sk-ant-x', askKey: 'sk-ant-x' })).join(' ')).not.toMatch(/key/i);
+  });
+});

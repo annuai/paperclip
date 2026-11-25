@@ -154,3 +154,30 @@ html, body {
 .menu .item.disabled { opacity: 0.6; cursor: default; }
 .menu .item.disabled:hover { background: transparent; color: inherit; }
 [data-style="flat"] .menu .item.disabled:hover { background: transparent; color: #f4f1ea; }
+
+/* ---- Ask Paperclip: the single-line input inside the balloon ---- */
+#balloon .balloon-ask { display: flex; gap: 6px; margin-top: 8px; align-items: stretch; }
+#balloon .balloon-input {
+  flex: 1 1 auto; min-width: 0; box-sizing: border-box; font: inherit; font-size: 13px; padding: 3px 8px;
+  border: 1.5px solid #3a3a3a; border-radius: 6px; background: #fff; color: #222; outline: none; user-select: text;
+}
+#balloon .balloon-input:focus-visible { border-color: #2f7de1; box-shadow: 0 0 0 1px #2f7de1; }
+#balloon .balloon-send {
+  flex: 0 0 auto; font: inherit; font-size: 12px; padding: 3px 10px; cursor: pointer; border-radius: 6px;
+  border: 1.5px solid #3a3a3a; background: #ffe680; color: #222;
+}
+#balloon .balloon-send:hover { filter: brightness(0.96); }
+#balloon .balloon-send:focus-visible { outline: 2px solid #2f7de1; outline-offset: 1px; }
+[data-style="flat"] #balloon .balloon-ask { margin-top: 10px; }
+[data-style="flat"] #balloon .balloon-input {
+  font-family: "Oswald", system-ui, sans-serif; font-weight: 400; font-size: 14px; padding: 4px 10px;
+  border: 1px solid rgba(244, 241, 234, 0.3); border-radius: 8px; background: rgba(244, 241, 234, 0.08); color: #f4f1ea;
+}
+[data-style="flat"] #balloon .balloon-input::placeholder { color: rgba(244, 241, 234, 0.55); }
+[data-style="flat"] #balloon .balloon-input:focus-visible { border-color: #f2b33d; box-shadow: 0 0 0 1px #f2b33d; }
+[data-style="flat"] #balloon .balloon-send {
+  font-family: "Oswald", system-ui, sans-serif; font-weight: 500; font-size: 12px; text-transform: uppercase;
+  letter-spacing: 0.06em; padding: 4px 12px; border-radius: 8px; border: 1px solid #f2b33d; background: #f2b33d; color: #18202e;
+}
+[data-style="flat"] #balloon .balloon-send:hover { filter: none; background: #f7c964; }
+[data-style="flat"] #balloon .balloon-send:focus-visible { outline: 2px solid #f2b33d; outline-offset: 2px; }

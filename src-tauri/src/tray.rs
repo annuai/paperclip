@@ -23,6 +23,9 @@ pub struct TrayHandles {
     focus_stop: MenuItem<Wry>,
     focus_info: MenuItem<Wry>,
     meeting: CheckMenuItem<Wry>,
+    ask_remove: MenuItem<Wry>,
+    ask_haiku: CheckMenuItem<Wry>,
+    ask_sonnet: CheckMenuItem<Wry>,
 }
 
 #[derive(Clone, Serialize)]
@@ -37,6 +40,15 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let joke = MenuItem::with_id(app, "joke", "Tell a joke", true, None::<&str>)?;
     let quote = MenuItem::with_id(app, "quote", "Give a quote", true, None::<&str>)?;
     let animate = MenuItem::with_id(app, "animate", "Animate!", true, None::<&str>)?;
+    // Ask Paperclip: one submenu (the main menu row count is pinned). Same ids as the right-click menu.
+    let ask_open = MenuItem::with_id(app, "ask-open", "Ask a question…", true, None::<&str>)?;
+    let ask_key = MenuItem::with_id(app, "ask-key", "Set Claude API key…", true, None::<&str>)?;
+    let ask_remove = MenuItem::with_id(app, "ask-remove", "Remove API key", false, None::<&str>)?;
+    let ask_haiku = CheckMenuItem::with_id(app, "ask-model-haiku", "Fast answers (Haiku)", true, true, None::<&str>)?;
+    let ask_sonnet = CheckMenuItem::with_id(app, "ask-model-sonnet", "Smarter answers (Sonnet)", true, false, None::<&str>)?;
+    let ask_sep1 = PredefinedMenuItem::separator(app)?;
+    let ask_sep2 = PredefinedMenuItem::separator(app)?;
+    let ask_menu = Submenu::with_items(app, "Ask Paperclip", true, &[&ask_open, &ask_sep1, &ask_key, &ask_remove, &ask_sep2, &ask_haiku, &ask_sonnet])?;
     let style_classic = CheckMenuItem::with_id(app, "style-classic", "Classic", true, true, None::<&str>)?;
     let style_flat = CheckMenuItem::with_id(app, "style-flat", "Flat", true, false, None::<&str>)?;
     let style_outfits = CheckMenuItem::with_id(app, "style-outfits", "Seasonal outfits", true, true, None::<&str>)?;
@@ -115,7 +127,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let sep3 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[&toggle, &sep1, &hi, &joke, &quote, &animate, &nap, &sep2, &quiet, &greet, &presence_menu, &style_menu, &wellbeing_menu, &autostart, &sep3, &quit],
+        &[&toggle, &sep1, &hi, &joke, &quote, &ask_menu, &animate, &nap, &sep2, &quiet, &greet, &presence_menu, &style_menu, &wellbeing_menu, &autostart, &sep3, &quit],
     )?;
 
     app.manage(TrayHandles {
@@ -136,6 +148,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         focus_stop: focus_stop.clone(),
         focus_info: focus_info.clone(),
         meeting: meeting.clone(),
+        ask_remove: ask_remove.clone(),
+        ask_haiku: ask_haiku.clone(),
+        ask_sonnet: ask_sonnet.clone(),
     });
 
     let mut builder = TrayIconBuilder::with_id("main").tooltip("Paperclip").menu(&menu);
@@ -216,6 +231,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                         let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked: Some(true) });
                     }
                 }
+                "ask-model-haiku" | "ask-model-sonnet" => {
+                    // Radio behaviour: exactly one of the two stays checked.
+                    let sonnet = id == "ask-model-sonnet";
+                    let _ = ask_haiku.set_checked(!sonnet);
+                    let _ = ask_sonnet.set_checked(sonnet);
+                    let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked: Some(true) });
+                }
                 "meeting" => {
                     let checked = meeting.is_checked().ok();
                     let _ = app.emit("tray-action", TrayAction { id: "meeting".to_string(), checked });
@@ -271,6 +293,9 @@ pub struct TraySync {
     focus_left: Option<u32>,
     meeting: bool,
     outfits: bool,
+    /// An API key for Ask Paperclip is stored (enables "Remove API key").
+    ask_key: bool,
+    ask_model: String,
 }
 
 #[tauri::command]
@@ -302,6 +327,9 @@ pub fn sync_tray(app: AppHandle, state: State<'_, TrayHandles>, sync: TraySync) 
     state.focus_info.set_text(focus_label(sync.focus_left)).map_err(|e| e.to_string())?;
     state.style_outfits.set_checked(sync.outfits).map_err(|e| e.to_string())?;
     state.meeting.set_checked(sync.meeting).map_err(|e| e.to_string())?;
+    state.ask_remove.set_enabled(sync.ask_key).map_err(|e| e.to_string())?;
+    state.ask_haiku.set_checked(sync.ask_model != "claude-sonnet-5-5").map_err(|e| e.to_string())?;
+    state.ask_sonnet.set_checked(sync.ask_model == "claude-sonnet-5-5").map_err(|e| e.to_string())?;
     if let Some(tray) = app.tray_by_id("main") {
         // The time left, where the user looks: the tooltip everywhere, plus a short title next to the macOS icon.
         let tip = match sync.focus_left {

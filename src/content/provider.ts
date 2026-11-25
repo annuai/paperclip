@@ -11,12 +11,14 @@ import stretch from './stretch.json';
 import focus from './focus.json';
 import meeting from './meeting.json';
 import files from './files.json';
+import ask from './ask.json';
 import { ShuffleBag } from '../util/shuffleBag';
 import type { Rng } from '../util/rng';
 
 export type ContentKind = 'greeting' | 'quote' | 'joke' | 'tip' | 'dizzy' | 'sleep' | 'hydration' | 'thanks' | 'lowBattery' | 'overheating' | 'lateNight'
   | 'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting'
-  | 'zipDone' | 'zipFail' | 'zipNo';
+  | 'zipDone' | 'zipFail' | 'zipNo'
+  | 'askIntro' | 'askPrompt' | 'askAgain' | 'askKeyPrompt' | 'askKeySaved' | 'askKeyRemoved' | 'askKeyFailed';
 export interface ContentItem { kind: ContentKind; text: string; attribution?: string }
 export interface ContentProvider { next(kind: ContentKind, ctx?: { now?: Date }): Promise<ContentItem> }
 
@@ -42,6 +44,7 @@ export class LocalContentProvider implements ContentProvider {
   private readonly presenceBags: Record<'lowBattery' | 'overheating' | 'lateNight', ShuffleBag<string>>;
   private readonly wellbeingBags: Record<'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting', ShuffleBag<string>>;
 
+  private readonly askBags: Record<'intro' | 'prompt' | 'again' | 'keyPrompt' | 'keySaved' | 'keyRemoved' | 'keyFailed', ShuffleBag<string>>;
   private readonly fileBags: Record<'zipDone' | 'zipFail' | 'zipNo', ShuffleBag<string>>;
 
   constructor(rng: Rng = Math.random) {
@@ -70,6 +73,15 @@ export class LocalContentProvider implements ContentProvider {
       zipDone: lines(files, 'zipDone'),
       zipFail: lines(files, 'zipFail'),
       zipNo: lines(files, 'zipNo'),
+    };
+    this.askBags = {
+      intro: lines(ask, 'intro'),
+      prompt: lines(ask, 'prompt'),
+      again: lines(ask, 'again'),
+      keyPrompt: lines(ask, 'keyPrompt'),
+      keySaved: lines(ask, 'keySaved'),
+      keyRemoved: lines(ask, 'keyRemoved'),
+      keyFailed: lines(ask, 'keyFailed'),
     };
     this.wellbeingBags = {
       stretch: lines(stretch, 'stretch'),
@@ -116,6 +128,16 @@ export class LocalContentProvider implements ContentProvider {
       case 'zipFail':
       case 'zipNo':
         return { kind, text: this.fileBags[kind].next() };
+      case 'askIntro':
+      case 'askPrompt':
+      case 'askAgain':
+      case 'askKeyPrompt':
+      case 'askKeySaved':
+      case 'askKeyRemoved':
+      case 'askKeyFailed': {
+        const k = (kind.slice(3, 4).toLowerCase() + kind.slice(4)) as keyof typeof this.askBags;
+        return { kind, text: this.askBags[k].next() };
+      }
     }
   }
 }

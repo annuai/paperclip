@@ -11,9 +11,10 @@ The character is original artwork. Paperclip is not affiliated with Microsoft an
 - **Talks:** greets you by time of day, shares quotes, tells jokes and drops "It looks like you're…" tips, without repeating himself until he's run through them all.
 - **Says hello when you unlock your screen**, with a different line depending on how long you were away.
 - **Water reminders:** every 30, 45, 60 or 90 minutes between 8 am and 10 pm, with **Drank some** / **Later** buttons and a daily glass count.
+- **Answers questions (optional):** *Ask Paperclip* sends a short question to Claude and shows the answer in his balloon (1 to 3 sentences). You bring your own Anthropic API key, kept in your system keychain and never shown again. Only the text you type and the last few turns of the chat are sent: no screen, clipboard or files. Pick Haiku (fast, default) or Sonnet in the submenu.
 - **Lives:** blinks, looks around, fidgets, dozes off when you leave him alone, and enters and leaves with a yoga mat in several different ways.
 - **Two styles:** *Classic* (glossy) and *Flat* (geometric, set in Oswald). Switch between them at any time.
-- **Stays out of the way:** clicks on the empty parts of his window pass through to the apps underneath, and he never takes keyboard focus.
+- **Stays out of the way:** clicks on the empty parts of his window pass through to the apps underneath, and he never takes keyboard focus, except while you are typing a question to Ask Paperclip.
 
 ![A water reminder with Drank some and Later buttons](docs/screenshots/water.png)
 
@@ -30,10 +31,11 @@ The character is original artwork. Paperclip is not affiliated with Microsoft an
 | Triple-click him | Shares a quote |
 | Fling him (drag and let go fast) | He flies, bounces off the screen edges and gets dizzy if it was rough |
 | Drop a file or folder on him | Offers to zip it next to the original |
+| Choose **Ask Paperclip** > **Ask a question…** | A box opens in his balloon: type, press Enter to send, Esc to cancel. The first time he asks for your Claude API key (**Set Claude API key…** / **Remove API key** live in the same submenu). Answers offer **Reply** and **Done** |
 | Tap the yoga mat | Bounces like it's a trampoline. Keep tapping to keep him jumping |
 | Drag him | Moves wherever you drop him. Whip him around fast and he gets dizzy |
 | Hover over him while he sleeps | Wakes up |
-| Right-click him, or click the menu-bar icon | Opens the menu: say hi, joke, quote, nap, style, quiet mode, water reminders, unlock greeting, launch at login, quit |
+| Right-click him, or click the menu-bar icon | Opens the menu: say hi, joke, quote, nap, style, quiet mode, ask Claude, water reminders, unlock greeting, launch at login, quit |
 
 Left-clicking the menu-bar icon brings him back if you've hidden him.
 

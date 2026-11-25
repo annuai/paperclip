@@ -3,6 +3,7 @@ import type { IntervalMin } from '../agent/hydration';
 import { FOCUS_OPTIONS } from '../agent/focus';
 import { STRETCH_OPTIONS } from '../agent/stretch';
 import type { StretchMin } from '../agent/stretch';
+import type { AskModel } from '../agent/ask';
 import type { Style } from '../art/style';
 import type { MenuItem } from './contextMenu';
 
@@ -20,12 +21,15 @@ export interface MenuState {
   focusLeft: number | null; // whole minutes left while a focus session runs
   calendarSupported: boolean; // macOS only
   meetingHeadsUp: boolean;
+  ask: { keySet: boolean; model: AskModel };
 }
 
 /**
  * The main menu. It must stay short (the window is 380 px tall and the menu already scrolls), so the reminder-like
  * features live under ONE "Wellbeing" row whose submenus open inside the sub-panel. Add new features there
  * (or in a similar group), never as another top-level row.
+ * The one exception is "Ask Paperclip": a headline action like Say hi / Tell a joke, so it gets its own row. It is a
+ * single submenu (ask, key management, model) rather than several rows, and the row-count pin test was updated for it.
  */
 export function buildMenu(s: MenuState): MenuItem[] {
   return [
@@ -33,6 +37,16 @@ export function buildMenu(s: MenuState): MenuItem[] {
     { id: 'joke', label: 'Tell a joke' },
     { id: 'quote', label: 'Give a quote' },
     { id: 'tip', label: 'Give me a tip' },
+    {
+      id: 'ask', label: 'Ask Paperclip',
+      children: [
+        { id: 'ask-open', label: 'Ask a question…' },
+        { id: 'ask-key', label: 'Set Claude API key…', separatorBefore: true },
+        ...(s.ask.keySet ? [{ id: 'ask-remove', label: 'Remove API key' }] : []),
+        { id: 'ask-model-haiku', label: 'Fast answers (Haiku)', role: 'radio' as const, checked: s.ask.model !== 'claude-sonnet-5-5', separatorBefore: true },
+        { id: 'ask-model-sonnet', label: 'Smarter answers (Sonnet)', role: 'radio' as const, checked: s.ask.model === 'claude-sonnet-5-5' },
+      ],
+    },
     { id: 'animate', label: 'Animate!' },
     { id: 'nap', label: s.sleeping ? 'Wake up' : 'Take a nap' },
     { id: 'quiet', label: 'Quiet mode', checked: s.quiet, separatorBefore: true },

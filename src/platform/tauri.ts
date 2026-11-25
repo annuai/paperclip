@@ -4,6 +4,7 @@ import { getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window';
 import type { WindowCtl } from '../agent/agent';
 import type { Rect } from '../ui/hitRects';
 import type { CalEvent } from '../agent/meeting';
+import type { AskFailure, AskResult, Turn } from '../agent/ask';
 
 async function guard<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
   try {
@@ -59,6 +60,8 @@ export interface WellbeingTray {
   focusLeft: number | null; // whole minutes left in a running focus session
   meeting: boolean;
   outfits: boolean;
+  askKey: boolean; // an API key is stored (enables the tray's "Remove API key")
+  askModel: string;
 }
 export async function syncTray(
   visible: boolean,
@@ -68,11 +71,11 @@ export async function syncTray(
   water = { enabled: true, intervalMin: 45, glasses: 0 },
   greet = true,
   presence = { hidePresenting: true, music: true },
-  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false, outfits: true },
+  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false, outfits: true, askKey: false, askModel: 'claude-haiku-5-5' },
 ): Promise<void> {
   await guard('sync_tray', () =>
     invoke('sync_tray', {
-      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music, stretchEnabled: wellbeing.stretchEnabled, stretchInterval: wellbeing.stretchInterval, focusLeft: wellbeing.focusLeft, meeting: wellbeing.meeting, outfits: wellbeing.outfits },
+      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music, stretchEnabled: wellbeing.stretchEnabled, stretchInterval: wellbeing.stretchInterval, focusLeft: wellbeing.focusLeft, meeting: wellbeing.meeting, outfits: wellbeing.outfits, askKey: wellbeing.askKey, askModel: wellbeing.askModel },
     }),
   );
 }
@@ -129,4 +132,36 @@ export async function clearDropped(): Promise<void> {
 }
 export async function revealZip(): Promise<void> {
   await guard('reveal_zip', () => invoke('reveal_zip'));
+}
+
+// ---- Ask Paperclip. The API key lives in the OS keychain; JS can store, remove and ask "is there one?" but never read it. ----
+export async function askKeyStatus(): Promise<boolean> {
+  return (await guard('ask_key_status', () => invoke<boolean>('ask_key_status'))) === true;
+}
+/** Stores the key in the keychain. Resolves false when it could not be saved (the value is never logged). */
+export async function askSetKey(key: string): Promise<boolean> {
+  try {
+    await invoke('ask_set_key', { key });
+    return true;
+  } catch {
+    return false; // deliberately no console output: the argument is a secret
+  }
+}
+export async function askRemoveKey(): Promise<void> {
+  await guard('ask_remove_key', () => invoke('ask_remove_key'));
+}
+/** One question to Claude (done in Rust, which reads the key itself). Never throws: failures carry a friendly message. */
+export async function askClaude(question: string, history: Turn[], model: string): Promise<AskResult> {
+  try {
+    const answer = await invoke<string>('ask', { question, history, model });
+    return { ok: true, answer };
+  } catch (e) {
+    const f = e as Partial<AskFailure> | null;
+    if (f && typeof f.message === 'string' && typeof f.kind === 'string') return { ok: false, failure: { kind: f.kind, message: f.message } };
+    return { ok: false, failure: { kind: 'other', message: "Something went wrong when I tried to ask Claude. Try again later." } };
+  }
+}
+/** Gives the (normally unfocused) window the keyboard for the ask input, or hands it back afterwards. */
+export async function askFocus(on: boolean): Promise<void> {
+  await guard('ask_focus', () => invoke('ask_focus', { on }));
 }

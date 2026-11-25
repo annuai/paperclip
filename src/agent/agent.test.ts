@@ -85,4 +85,42 @@ describe('Agent', () => {
     agent.interrupt();
     expect(agent.epoch).toBe(e + 1);
   });
+  it('prompt() shows the input via the balloon, resolves with the typed text and lets Explain stop afterwards', async () => {
+    const log: string[] = [];
+    const names = new Map<Animation, string>(Object.entries(ANIMATIONS).map(([k, v]) => [v, k]));
+    const animator = { play: async (a: Animation) => { log.push('play:' + names.get(a)); await new Promise((r) => setTimeout(r, 5)); return 'completed' as const; }, exit: () => log.push('exit') } as unknown as Animator;
+    const balloon = {
+      visible: false,
+      speak: async () => 'done',
+      prompt: async (t: string, o: { secret?: boolean }) => { log.push(`prompt:${t}:${o.secret}`); return 'typed'; },
+      close: () => undefined,
+    };
+    const agent = new Agent({ animator, balloon, win: { show: async () => undefined, hide: async () => undefined } });
+    expect(await agent.prompt('Q?', { secret: true })).toBe('typed');
+    expect(log).toEqual(['play:Explain', 'prompt:Q?:true', 'exit']);
+  });
+
+  it('prompt() resolves null when interrupted before it runs, or when the balloon cannot prompt', async () => {
+    const { agent } = setup();
+    void agent.play('Wave');
+    const p = agent.prompt('Q?');
+    agent.interrupt();
+    expect(await p).toBeNull();
+    expect(await agent.prompt('Q?')).toBeNull(); // the test balloon has no prompt()
+  });
+
+  it('hold() plays until stopped, and is skipped when stopped before it starts', async () => {
+    const { agent, log } = setup();
+    void agent.play('Wave');
+    const stop = agent.hold('Thinking');
+    stop(); // the animation never started
+    await agent.play('Blink');
+    expect(log).not.toContain('play:Thinking');
+    const stop2 = agent.hold('Thinking');
+    await new Promise((r) => setTimeout(r, 1)); // let Wave and Blink... queue is empty so Thinking starts
+    stop2();
+    await agent.play('Blink');
+    expect(log.filter((l) => l === 'play:Thinking')).toHaveLength(1);
+    expect(log.filter((l) => l === 'exit').length).toBeGreaterThanOrEqual(2);
+  });
 });

@@ -1,4 +1,4 @@
-import type { BalloonAction, BalloonLike } from '../agent/agent';
+import type { BalloonAction, BalloonLike, PromptOpts } from '../agent/agent';
 
 /** Auto-dismiss for balloons that show action buttons (treated as 'done'; the reminder maps it to Later). */
 export const ACTION_TIMEOUT_MS = 120_000;
@@ -15,8 +15,15 @@ export class Balloon implements BalloonLike {
   private hasActions = false;
   private skip: (() => void) | null = null;
   private hideTimer: ReturnType<typeof setTimeout> | null = null;
+  private prompting = false;
+  private input: HTMLInputElement | null = null;
 
-  constructor(private readonly el: HTMLElement, private readonly onVisibility: (v: boolean) => void) {
+  /** `onPrompt(true)` fires when a text input opens (the host must take keyboard focus), `false` when it closes. */
+  constructor(
+    private readonly el: HTMLElement,
+    private readonly onVisibility: (v: boolean) => void,
+    private readonly hooks: { onPrompt?: (active: boolean) => void } = {},
+  ) {
     this.textEl = el.querySelector('.balloon-text') as HTMLElement;
     el.addEventListener('mousedown', (e) => e.stopPropagation());
     // Drawn × close affordance (visible in the Flat style only; see styles.css).
@@ -31,7 +38,7 @@ export class Balloon implements BalloonLike {
     });
     el.append(close);
     el.addEventListener('click', () => {
-      if (!this.isVisible) return;
+      if (!this.isVisible || this.prompting) return; // an open input waits for Enter / Esc
       if (this.typing) this.skip?.();
       else if (!this.hasActions) this.end('closed'); // action balloons wait for a button
     });
@@ -112,6 +119,71 @@ export class Balloon implements BalloonLike {
     });
   }
 
+  /**
+   * A single-line input under the text. Enter sends (blank is ignored), Esc or close() cancels with null.
+   * No typewriter and no auto-dismiss: it waits for the user. The host is told to take keyboard focus via `onPrompt`.
+   */
+  prompt(text: string, opts: PromptOpts = {}): Promise<string | null> {
+    this.end('closed', true);
+    this.hasActions = true;
+    this.prompting = true;
+    return new Promise<string | null>((resolve) => {
+      let value: string | null = null;
+      this.finish = () => resolve(value);
+      if (this.hideTimer !== null) { clearTimeout(this.hideTimer); this.hideTimer = null; }
+      this.textEl.textContent = '';
+      const line = document.createElement('span');
+      line.textContent = text;
+      const row = document.createElement('div');
+      row.className = 'balloon-ask';
+      const input = document.createElement('input');
+      input.className = 'balloon-input';
+      input.type = opts.secret ? 'password' : 'text';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.setAttribute('autocapitalize', 'off');
+      input.setAttribute('autocorrect', 'off');
+      input.setAttribute('aria-label', opts.placeholder ?? text);
+      if (opts.placeholder) input.placeholder = opts.placeholder;
+      if (opts.maxLength) input.maxLength = opts.maxLength;
+      const send = document.createElement('button');
+      send.type = 'button';
+      send.className = 'balloon-send primary';
+      send.textContent = 'Send';
+      const submit = () => {
+        if (!input.value.trim()) return; // a blank line is not an answer; Esc cancels
+        value = input.value;
+        this.end('submit');
+      };
+      input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.isComposing) return; // Enter while composing (IME) only commits the composition
+        if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        else if (e.key === 'Escape') { e.preventDefault(); this.end('cancel'); }
+      });
+      send.addEventListener('click', (e) => { e.stopPropagation(); submit(); });
+      row.append(input, send);
+      this.textEl.append(line, row);
+      this.input = input;
+      this.el.classList.remove('hidden', 'fading');
+      this.isVisible = true;
+      this.typing = false;
+      requestAnimationFrame(() => this.onVisibility(true));
+      this.hooks.onPrompt?.(true);
+      input.focus();
+    });
+  }
+
+  /** Re-focus the input (after the window itself has been given keyboard focus). */
+  focusInput(): void {
+    this.input?.focus();
+  }
+
+  /** Abandons an open input (null result). No-op for any other balloon. */
+  cancelPrompt(): void {
+    if (this.prompting) this.end('cancel');
+  }
+
   close(): void {
     this.end('closed');
   }
@@ -120,6 +192,11 @@ export class Balloon implements BalloonLike {
     if (this.timer !== null) { clearTimeout(this.timer); this.timer = null; }
     this.typing = false;
     this.skip = null;
+    if (this.prompting) {
+      this.prompting = false;
+      this.input = null;
+      this.hooks.onPrompt?.(false);
+    }
     const fin = this.finish;
     this.finish = null;
     if (this.isVisible) {

@@ -8,6 +8,8 @@ import { HydrationScheduler } from './agent/hydration';
 import type { IntervalMin } from './agent/hydration';
 import { DEFAULT_SLEEP, SleepController } from './agent/sleep';
 import { Presence } from './agent/presence';
+import { AskFlow, AskHistory } from './agent/ask';
+import type { AskLine, AskModel } from './agent/ask';
 import { FocusTimer, focusLabel } from './agent/focus';
 import { MeetingAlerts, meetingLine } from './agent/meeting';
 import type { CalEvent } from './agent/meeting';
@@ -24,7 +26,7 @@ import type { FilesDropped } from './platform/tauri';
 import { LocalContentProvider } from './content/provider';
 import type { ContentKind, ContentProvider } from './content/provider';
 import { loadSettings, locateWindow, restorePosition, saveSettings, savePosition, trackPosition, windowSize } from './platform/settings';
-import { clearDropped, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import { askClaude, askFocus, askKeyStatus, askRemoveKey, askSetKey, clearDropped, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
 import type { SystemInfo } from './platform/tauri';
 import { WelcomeBack, WelcomeLines } from './agent/welcomeBack';
 import { EyeFollow, EyeTracker, characterClick, computeTarget } from './agent/eyeFollow';
@@ -57,6 +59,9 @@ async function boot(): Promise<void> {
   let reactToMusic = settings.reactToMusic;
   let meetingHeadsUp = settings.meetingHeadsUp;
   let outfitSetting = settings.outfits;
+  let askModel: AskModel = settings.askModel;
+  let askIntroSeen = settings.askIntroSeen;
+  let askKeySet = false; // whether the keychain holds a key (JS can ask, never read it); filled in below at boot
   let calendarOk = false; // macOS only: set once the platform answers, hides the Meeting heads-up toggle elsewhere
 
   const charEl = document.getElementById('character') as HTMLElement;
@@ -100,7 +105,21 @@ async function boot(): Promise<void> {
   };
   const balloonEl = document.getElementById('balloon') as HTMLElement;
   const menuEl = document.getElementById('menu') as HTMLElement;
-  const balloon = new Balloon(balloonEl, (v) => hit.set('balloon', v ? rectOf(balloonEl) : null));
+  // Ask Paperclip's input needs the keyboard: the window is focus:false, so grab focus while the input is open (the balloon is
+  // a hit rect meanwhile, via onVisibility) and hand it back afterwards. Click-through returns when the balloon rect goes away.
+  const balloon = new Balloon(balloonEl, (v) => hit.set('balloon', v ? rectOf(balloonEl) : null), {
+    onPrompt: (active) => {
+      if (active) void askFocus(true).then(() => balloon.focusInput());
+      else void askFocus(false);
+    },
+  });
+  // If the user wanders off (to copy an API key, say) the input waits; a forgotten one is abandoned after 5 minutes.
+  let promptAbandon: ReturnType<typeof setTimeout> | null = null;
+  window.addEventListener('blur', () => {
+    if (promptAbandon !== null) clearTimeout(promptAbandon);
+    promptAbandon = setTimeout(() => { promptAbandon = null; if (!document.hasFocus()) balloon.cancelPrompt(); }, 300_000);
+  });
+  window.addEventListener('focus', () => { if (promptAbandon !== null) { clearTimeout(promptAbandon); promptAbandon = null; } });
   const menu = new ContextMenu(menuEl, (id) => void runCommand(id), (v) => hit.set('menu', v ? menu.rect() : null));
 
   const agent = new Agent({ animator, balloon, win });
@@ -404,6 +423,8 @@ async function boot(): Promise<void> {
       focusLeft: focusLeft(),
       meeting: meetingHeadsUp,
       outfits: outfitSetting === 'auto',
+      askKey: askKeySet,
+      askModel,
     });
   sleep.onChange(() => {
     if (sleep.sleeping) follow.end('sleep');
@@ -435,6 +456,7 @@ async function boot(): Promise<void> {
   const hideNow = async (auto = false) => {
     if (!auto) presence.userChangedVisibility();
     follow.end('hide');
+    ask.reset(); // the conversation lives in memory only and ends when he is hidden
     thrower.cancel();
     sleep.reset();
     sleep.stop();
@@ -456,6 +478,35 @@ async function boot(): Promise<void> {
     hydration.start();
     updateHit();
   };
+
+  // ---- Ask Paperclip: the conversation logic is agent/ask.ts; this only supplies the pieces it needs ----
+  const askLine = async (k: AskLine): Promise<string> => (await content.next(`ask${k[0].toUpperCase()}${k.slice(1)}` as ContentKind)).text;
+  const ask = new AskFlow(
+    {
+      hasKey: () => askKeySet,
+      introSeen: () => askIntroSeen,
+      markIntroSeen: () => { askIntroSeen = true; void saveSettings({ askIntroSeen }); },
+      line: askLine,
+      prompt: (text, opts) => agent.prompt(text, opts),
+      say: (text) => agent.speak(text),
+      choose: (text, actions) => agent.ask(text, actions),
+      think: () => agent.hold('Thinking'),
+      query: async (q, turns) => {
+        const r = await askClaude(q, turns, askModel);
+        if (!r.ok && r.failure.kind === 'noKey') { askKeySet = false; sync(); } // removed behind our back
+        return r;
+      },
+      saveKey: async (key) => {
+        const ok = await askSetKey(key);
+        if (ok) { askKeySet = true; sync(); }
+        return ok;
+      },
+      removeKey: async () => { await askRemoveKey(); askKeySet = false; sync(); },
+      epoch: () => agent.epoch,
+    },
+    new AskHistory(),
+  );
+  void askKeyStatus().then((has) => { askKeySet = has; sync(); });
 
   const presenceCtx = (): PresenceCtx => ({
     now: Date.now(),
@@ -494,7 +545,7 @@ async function boot(): Promise<void> {
   async function runCommand(id: string, checked?: boolean): Promise<void> {
     try {
       const settingOnly = ['nap', 'tray-click', 'style-classic', 'style-flat', 'quit', 'hide', 'toggle', 'quiet', 'greet', 'meeting', 'focus-stop', 'stretch-enabled', 'style-outfits'].includes(id)
-        || id.startsWith('water-') || id.startsWith('presence-') || (id.startsWith('stretch-') && id !== 'stretch-now');
+        || id.startsWith('water-') || id.startsWith('ask-model-') || id.startsWith('presence-') || (id.startsWith('stretch-') && id !== 'stretch-now');
       if (sleep.sleeping && !settingOnly) await sleep.wake('command');
       switch (id) {
         case 'style-classic':
@@ -505,6 +556,21 @@ async function boot(): Promise<void> {
           outfitSetting = (checked ?? outfitSetting !== 'auto') ? 'auto' : 'off';
           void saveSettings({ outfits: outfitSetting });
           applyOutfit();
+          sync();
+          return;
+        case 'ask-open':
+        case 'ask-key':
+        case 'ask-remove':
+          if (agent.hidden) await showNow(); // from the tray while hidden: bring him back first
+          user();
+          if (id === 'ask-open') await ask.ask();
+          else if (id === 'ask-key') await ask.setKey();
+          else await ask.removeKey();
+          return;
+        case 'ask-model-haiku':
+        case 'ask-model-sonnet':
+          askModel = id === 'ask-model-sonnet' ? 'claude-sonnet-5-5' : 'claude-haiku-5-5';
+          void saveSettings({ askModel });
           sync();
           return;
         case 'water-enabled':
@@ -643,6 +709,7 @@ async function boot(): Promise<void> {
     focusLeft: focusLeft(),
     calendarSupported: calendarOk,
     meetingHeadsUp,
+    ask: { keySet: askKeySet, model: askModel },
   });
 
   // Throwing: rAF runs only while he is flying (see agent/thrower.ts). Physics are in physical px on the monitor he is on.

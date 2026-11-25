@@ -4,8 +4,11 @@ import type { Animator } from '../anim/animator';
 import type { Animation, AnimName } from '../anim/types';
 
 export interface BalloonAction { id: string; label: string }
+export interface PromptOpts { secret?: boolean; placeholder?: string; maxLength?: number }
 export interface BalloonLike {
   speak(text: string, attribution?: string, actions?: BalloonAction[]): Promise<string>;
+  /** A text input in the balloon: resolves with the typed text (Enter) or null (Esc, interrupt). */
+  prompt?(text: string, opts: PromptOpts): Promise<string | null>;
   close(): void;
   readonly visible: boolean;
 }
@@ -13,6 +16,8 @@ export interface WindowCtl { show(): Promise<void>; hide(): Promise<void> }
 export type Action =
   | { type: 'play'; name: AnimName; timeoutMs?: number }
   | { type: 'speak'; text: string; attribution?: string; actions?: BalloonAction[]; anim?: AnimName; result?: (r: string) => void }
+  | { type: 'prompt'; text: string; opts: PromptOpts; result?: (r: string | null) => void }
+  | { type: 'think'; name: AnimName; stopped: () => boolean }
   | { type: 'wait'; ms: number }
   | { type: 'show' }
   | { type: 'hide' };
@@ -74,6 +79,26 @@ export class Agent {
       void this.enqueue({ type: 'speak', text, anim, result: (r) => { got = true; resolve(r); } })
         .then(() => { if (!got) resolve('closed'); });
     });
+  }
+  /** Show an input in the balloon; resolves with the typed text, or null when cancelled / interrupted / dropped. */
+  prompt(text: string, opts: PromptOpts = {}): Promise<string | null> {
+    return new Promise<string | null>((resolve) => {
+      let got = false;
+      void this.enqueue({ type: 'prompt', text, opts, result: (r) => { got = true; resolve(r); } })
+        .then(() => { if (!got) resolve(null); });
+    });
+  }
+  /**
+   * Plays a looping animation until the returned function is called (a "waiting for an answer" pose).
+   * Safe if stop() arrives before the animation even started: it is then skipped.
+   */
+  hold(name: AnimName): () => void {
+    let stopped = false;
+    void this.enqueue({ type: 'think', name, stopped: () => stopped });
+    return () => {
+      stopped = true;
+      this.animator.exit();
+    };
   }
   wait(ms: number): Promise<void> { return this.enqueue({ type: 'wait', ms }); }
   show(): Promise<void> { return this.enqueue({ type: 'show' }); }
@@ -155,6 +180,21 @@ export class Agent {
         // Explain loops until told to stop; a named animation plays out, unless the balloon was closed on it.
         if (!a.anim || r === 'closed') this.animator.exit();
         await explain;
+        return;
+      }
+      case 'prompt': {
+        const explain = this.animator.play(this.animations.Explain);
+        const r = this.balloon.prompt ? await this.balloon.prompt(a.text, a.opts) : null;
+        a.result?.(r);
+        this.animator.exit();
+        await explain;
+        return;
+      }
+      case 'think': {
+        if (a.stopped()) return;
+        const playing = this.animator.play(this.animations[a.name]);
+        if (a.stopped()) this.animator.exit();
+        await playing;
         return;
       }
       case 'wait':

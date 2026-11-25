@@ -1,3 +1,4 @@
+mod ask;
 mod calendar;
 mod clickthrough;
 mod files;
@@ -40,6 +41,11 @@ pub fn run() {
             calendar::calendar_supported,
             calendar::calendar_request_access,
             calendar::calendar_set_enabled,
+            ask::ask,
+            ask::ask_key_status,
+            ask::ask_set_key,
+            ask::ask_remove_key,
+            ask::ask_focus,
             files::zip_dropped,
             files::clear_dropped,
             files::reveal_zip,
