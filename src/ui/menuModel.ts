@@ -28,6 +28,7 @@ export interface MenuState {
  * The main menu. It must stay short (the window is 380 px tall and the menu already scrolls), so the reminder-like
  * features live under ONE "Wellbeing" row whose submenus open inside the sub-panel. Add new features there
  * (or in a similar group), never as another top-level row.
+ * "Check for updates…" sits inside the Presence submenu for the same reason (no new top-level row).
  * The one exception is "Ask Paperclip": a headline action like Say hi / Tell a joke, so it gets its own row. It is a
  * single submenu (ask, key management, model) rather than several rows, and the row-count pin test was updated for it.
  */
@@ -56,6 +57,7 @@ export function buildMenu(s: MenuState): MenuItem[] {
       children: [
         { id: 'presence-hide', label: 'Hide when presenting', role: 'checkbox', checked: s.hideWhenPresenting },
         { id: 'presence-music', label: 'Dance to music', role: 'checkbox', checked: s.reactToMusic },
+        { id: 'update-check', label: 'Check for updates…', separatorBefore: true },
       ],
     },
     {

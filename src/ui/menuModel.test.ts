@@ -29,6 +29,11 @@ describe('main menu', () => {
     expect(find(buildMenu(base), 'ask-key')?.label).toBe('Set Claude API key…');
   });
 
+  it('"Check for updates…" lives inside the Presence submenu, not as a new top-level row', () => {
+    expect(find(buildMenu(base), 'presence')?.children?.map((c) => c.id)).toEqual(['presence-hide', 'presence-music', 'update-check']);
+    expect(find(buildMenu(base), 'update-check')?.label).toBe('Check for updates…');
+  });
+
   it('groups water, stretch, focus and meeting heads-up under Wellbeing', () => {
     const w = find(buildMenu(base), 'wellbeing');
     expect(w?.children?.map((c) => c.id)).toEqual(['water', 'stretch', 'focus', 'meeting']);

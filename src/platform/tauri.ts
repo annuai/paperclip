@@ -1,6 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window';
+import { check } from '@tauri-apps/plugin-updater';
+import type { Update } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import type { WindowCtl } from '../agent/agent';
 import type { Rect } from '../ui/hitRects';
 import type { CalEvent } from '../agent/meeting';
@@ -164,4 +167,21 @@ export async function askClaude(question: string, history: Turn[], model: string
 /** Gives the (normally unfocused) window the keyboard for the ask input, or hands it back afterwards. */
 export async function askFocus(on: boolean): Promise<void> {
   await guard('ask_focus', () => invoke('ask_focus', { on }));
+}
+
+// ---- Updates (tauri-plugin-updater runs the HTTP in Rust, so the CSP needs no change) ----
+let foundUpdate: Update | null = null;
+/** The newest version when it is newer than the running one, else null. Rejects when offline or the endpoint 404s. */
+export async function checkForUpdate(): Promise<{ version: string } | null> {
+  foundUpdate = null;
+  const u = await check({ timeout: 15_000 });
+  if (!u) return null;
+  foundUpdate = u;
+  return { version: u.version };
+}
+/** Downloads and installs the update found by `checkForUpdate`, then relaunches. */
+export async function installUpdateAndRestart(): Promise<void> {
+  if (!foundUpdate) throw new Error('no update checked');
+  await foundUpdate.downloadAndInstall();
+  await relaunch();
 }

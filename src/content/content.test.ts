@@ -13,6 +13,7 @@ import focus from './focus.json';
 import meeting from './meeting.json';
 import files from './files.json';
 import ask from './ask.json';
+import updates from './updates.json';
 import { LocalContentProvider, periodOf } from './provider';
 import { mulberry32 } from '../util/rng';
 
@@ -34,7 +35,7 @@ describe('content', () => {
     expect(tips).toHaveLength(20);
   });
   it('texts are non-empty, <=180 chars and unique', () => {
-    [greetings, quotes, jokes, tips, dizzy, sleep, hydration, thanks, presence, stretch, focus, meeting, files, ask].forEach(valid);
+    [greetings, quotes, jokes, tips, dizzy, sleep, hydration, thanks, presence, stretch, focus, meeting, files, ask, updates].forEach(valid);
     expect(hydration.length).toBeGreaterThanOrEqual(15);
     expect(hydration.every((x) => x.text.length <= 100)).toBe(true); // must fit the balloon with its buttons
     expect(sleep.length).toBeGreaterThanOrEqual(10);
@@ -73,6 +74,15 @@ describe('content', () => {
     }
     expect(ask.filter((x) => x.kind === 'intro').every((x) => /only/i.test(x.text) && /claude/i.test(x.text))).toBe(true);
     expect(ask.filter((x) => x.kind === 'keyPrompt').every((x) => /keychain/i.test(x.text))).toBe(true);
+  });
+  it('update lines: variety per kind, balloon-sized, the version template used once', () => {
+    for (const [k, min] of [['upToDate', 3], ['available', 3], ['checkFailed', 3], ['installing', 2], ['installFailed', 2]] as const) {
+      const l = updates.filter((x) => x.kind === k);
+      expect(l.length, k).toBeGreaterThanOrEqual(min);
+      expect(l.every((x) => x.text.replace('{version}', '10.20.30').length <= 100), k).toBe(true);
+    }
+    expect(updates.filter((x) => x.kind === 'available').every((x) => x.text.split('{version}').length === 2)).toBe(true);
+    expect(updates.filter((x) => x.kind !== 'available').every((x) => !x.text.includes('{'))).toBe(true);
   });
   it('meeting templates use {when} and {title} exactly once and fit with a 48 char title', () => {
     for (const m of meeting) {

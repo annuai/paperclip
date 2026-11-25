@@ -11,6 +11,11 @@ The character is original artwork. Paperclip is not affiliated with Microsoft an
 - **Talks:** greets you by time of day, shares quotes, tells jokes and drops "It looks like you're…" tips, without repeating himself until he's run through them all.
 - **Says hello when you unlock your screen**, with a different line depending on how long you were away.
 - **Water reminders:** every 30, 45, 60 or 90 minutes between 8 am and 10 pm, with **Drank some** / **Later** buttons and a daily glass count.
+- **Stretch breaks:** after an hour of steady use (30, 45, 60 or 90 minutes) he stretches on his mat and invites you to join a 30-second guided stretch.
+- **Focus timer:** 15 to 60 minutes. He sets a timer on his mat, stays quiet until it rings, then celebrates. The menu-bar icon shows the minutes left.
+- **Meeting heads-up (macOS, opt-in):** a nudge 5 minutes before calendar events. Calendar access is only requested when you turn it on.
+- **Notices your computer:** hides while you present or watch something full screen and comes back after, dances when music plays, sweats when the CPU is pegged, gets tired on low battery and yawns late at night.
+- **Seasonal outfits:** a pumpkin, Santa hat, party hat, heart or shamrock on the right days (turn off under **Style**).
 - **Answers questions (optional):** *Ask Paperclip* sends a short question to Claude and shows the answer in his balloon (1 to 3 sentences). You bring your own Anthropic API key, kept in your system keychain and never shown again. Only the text you type and the last few turns of the chat are sent: no screen, clipboard or files. Pick Haiku (fast, default) or Sonnet in the submenu.
 - **Lives:** blinks, looks around, fidgets, dozes off when you leave him alone, and enters and leaves with a yoga mat in several different ways.
 - **Two styles:** *Classic* (glossy) and *Flat* (geometric, set in Oswald). Switch between them at any time.
@@ -35,7 +40,7 @@ The character is original artwork. Paperclip is not affiliated with Microsoft an
 | Tap the yoga mat | Bounces like it's a trampoline. Keep tapping to keep him jumping |
 | Drag him | Moves wherever you drop him. Whip him around fast and he gets dizzy |
 | Hover over him while he sleeps | Wakes up |
-| Right-click him, or click the menu-bar icon | Opens the menu: say hi, joke, quote, nap, style, quiet mode, ask Claude, water reminders, unlock greeting, launch at login, quit |
+| Right-click him, or click the menu-bar icon | Opens the menu: say hi, joke, quote, nap, style and outfits, quiet mode, ask Claude, wellbeing (water, stretch, focus timer, meetings), presence, unlock greeting, updates, launch at login, quit |
 
 Left-clicking the menu-bar icon brings him back if you've hidden him.
 
@@ -79,11 +84,48 @@ npm run tauri build
 
 The output lands in `src-tauri/target/release/bundle/`: `macos/Paperclip.app` and `dmg/Paperclip_<version>_aarch64.dmg` on macOS.
 
+A local build does not need the updater signing key: update artifacts (`.tar.gz` and `.sig`) are only produced when the release config is added (`--config src-tauri/tauri.release.conf.json`), and that is what the release workflow does. To test the updater bundle locally, set `TAURI_SIGNING_PRIVATE_KEY` to the key's contents (or path) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` to an empty string, then add that flag.
+
 If the `.dmg` step fails with "Resource busy", an earlier Paperclip disk image is still mounted. Eject it in Finder, or run this, then rebuild:
 
 ```bash
 hdiutil info | grep /Volumes/Paperclip | awk '{print $1}' | xargs -I{} hdiutil detach {} -force
 ```
+
+## Releases
+
+Releases are built by GitHub Actions (`.github/workflows/release.yml`) from a version tag. CI (`.github/workflows/ci.yml`) runs tests, typecheck and clippy on every push to `main` and every pull request.
+
+### Cut a release
+
+1. Bump the version in all three places, to the same number: `version` in `src-tauri/tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml` (then run `cargo check --manifest-path src-tauri/Cargo.toml` or `npm install` so the lock files follow).
+2. Commit, then tag and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
+3. The workflow builds macOS (universal), Windows and Linux, and creates a **draft** release with the installers, the signed updater bundles and `latest.json`.
+4. Check the draft, then publish it. Publishing is what makes `latest.json` the "latest" one, so existing installs start to see the update.
+5. Optional: update the Homebrew cask (see `packaging/README.md`).
+
+### GitHub secrets
+
+Add these under Settings > Secrets and variables > Actions:
+
+| Secret | Needed for |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | Required. Contents of the updater private key file (see below). |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | The key's password. The current key has none, so leave this empty or unset. |
+| `APPLE_CERTIFICATE` | Optional: base64 of the Developer ID Application `.p12`. |
+| `APPLE_CERTIFICATE_PASSWORD` | Optional: password of that `.p12`. |
+| `APPLE_SIGNING_IDENTITY` | Optional: e.g. `Developer ID Application: Name (TEAMID)`. |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | Optional: notarization (an app-specific password, not your Apple ID password). |
+
+Without the Apple secrets the macOS build still succeeds, just unsigned (users right-click > Open the first time). Signing happens only when `APPLE_CERTIFICATE` is set; notarization only when all three Apple ID secrets are set too.
+
+### The updater key
+
+The updater verifies downloads against a public key that is built into the app (`plugins.updater.pubkey` in `src-tauri/tauri.conf.json`). The matching **private key lives outside the repo at `~/.tauri/paperclip.key`** on the machine that generated it. Never commit it. Copy its contents into the `TAURI_SIGNING_PRIVATE_KEY` secret and keep a backup: if it is lost, installed copies can never be updated and need a manual reinstall. Rotating the key has the same effect.
+
+### The repo must be public for updates
+
+The app checks `https://github.com/annuai/paperclip/releases/latest/download/latest.json`. While the repo is private that URL answers 404 to everyone who is not logged in, so "Check for updates…" can only say it couldn't check (and the daily silent check stays quiet). Make the repo public before shipping a release to anyone else. The same goes for the Homebrew cask download.
 
 ## Development
 

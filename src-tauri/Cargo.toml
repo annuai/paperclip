@@ -20,6 +20,8 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tauri-plugin-opener = "2"
 keyring = "4"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"

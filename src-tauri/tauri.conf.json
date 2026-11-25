@@ -44,6 +44,17 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "entitlements": "Entitlements.plist"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDUwRjI1ODgzRjc2QkVEOTAKUldTUTdXdjNnMWp5VUxCTm1tVWxnRTl6Z1ZDN2x2M0F4azRMaXNwZ2JtSEZWbXNWNyswOEJGaEoK",
+      "endpoints": [
+        "https://github.com/annuai/paperclip/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

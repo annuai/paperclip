@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Meeting heads-up reads EventKit; a hardened-runtime app must declare it or macOS never shows the prompt. -->
+  <key>com.apple.security.personal-information.calendars</key>
+  <true/>
+  <!-- Not sandboxed on purpose (no com.apple.security.app-sandbox), so outgoing network and the keychain need no
+       entitlement. WKWebView renders in Apple's own WebContent process, so no JIT/unsigned-memory entitlement either. -->
+</dict>
+</plist>

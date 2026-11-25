@@ -25,6 +25,8 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(std::sync::Arc::new(clickthrough::HitState::default()))
         .manage(files::DropState::default())
         .on_window_event(|window, event| {

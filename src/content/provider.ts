@@ -12,12 +12,14 @@ import focus from './focus.json';
 import meeting from './meeting.json';
 import files from './files.json';
 import ask from './ask.json';
+import updates from './updates.json';
 import { ShuffleBag } from '../util/shuffleBag';
 import type { Rng } from '../util/rng';
 
 export type ContentKind = 'greeting' | 'quote' | 'joke' | 'tip' | 'dizzy' | 'sleep' | 'hydration' | 'thanks' | 'lowBattery' | 'overheating' | 'lateNight'
   | 'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting'
   | 'zipDone' | 'zipFail' | 'zipNo'
+  | 'updateUpToDate' | 'updateAvailable' | 'updateCheckFailed' | 'updateInstalling' | 'updateInstallFailed'
   | 'askIntro' | 'askPrompt' | 'askAgain' | 'askKeyPrompt' | 'askKeySaved' | 'askKeyRemoved' | 'askKeyFailed';
 export interface ContentItem { kind: ContentKind; text: string; attribution?: string }
 export interface ContentProvider { next(kind: ContentKind, ctx?: { now?: Date }): Promise<ContentItem> }
@@ -45,6 +47,7 @@ export class LocalContentProvider implements ContentProvider {
   private readonly wellbeingBags: Record<'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting', ShuffleBag<string>>;
 
   private readonly askBags: Record<'intro' | 'prompt' | 'again' | 'keyPrompt' | 'keySaved' | 'keyRemoved' | 'keyFailed', ShuffleBag<string>>;
+  private readonly updateBags: Record<'upToDate' | 'available' | 'checkFailed' | 'installing' | 'installFailed', ShuffleBag<string>>;
   private readonly fileBags: Record<'zipDone' | 'zipFail' | 'zipNo', ShuffleBag<string>>;
 
   constructor(rng: Rng = Math.random) {
@@ -73,6 +76,13 @@ export class LocalContentProvider implements ContentProvider {
       zipDone: lines(files, 'zipDone'),
       zipFail: lines(files, 'zipFail'),
       zipNo: lines(files, 'zipNo'),
+    };
+    this.updateBags = {
+      upToDate: lines(updates, 'upToDate'),
+      available: lines(updates, 'available'), // template: {version} is filled in by agent/updates.ts
+      checkFailed: lines(updates, 'checkFailed'),
+      installing: lines(updates, 'installing'),
+      installFailed: lines(updates, 'installFailed'),
     };
     this.askBags = {
       intro: lines(ask, 'intro'),
@@ -128,6 +138,14 @@ export class LocalContentProvider implements ContentProvider {
       case 'zipFail':
       case 'zipNo':
         return { kind, text: this.fileBags[kind].next() };
+      case 'updateUpToDate':
+      case 'updateAvailable':
+      case 'updateCheckFailed':
+      case 'updateInstalling':
+      case 'updateInstallFailed': {
+        const k = (kind.slice(6, 7).toLowerCase() + kind.slice(7)) as keyof typeof this.updateBags;
+        return { kind, text: this.updateBags[k].next() };
+      }
       case 'askIntro':
       case 'askPrompt':
       case 'askAgain':

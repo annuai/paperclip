@@ -1,0 +1,16 @@
+[
+  { "kind": "upToDate", "text": "You're up to date! Nothing new to clip on." },
+  { "kind": "upToDate", "text": "You're up to date! I'm already the newest me." },
+  { "kind": "upToDate", "text": "You're up to date! It looks like you're running the latest version." },
+  { "kind": "upToDate", "text": "Checked, and you're up to date! Fresh as a new box of paper clips." },
+  { "kind": "available", "text": "Version {version} is out! Want to update and restart?" },
+  { "kind": "available", "text": "It looks like Version {version} is out. Update and restart?" },
+  { "kind": "available", "text": "Good news: Version {version} is out! Update and restart?" },
+  { "kind": "checkFailed", "text": "I couldn't reach the update shelf. Maybe try again in a bit?" },
+  { "kind": "checkFailed", "text": "Hmm, I couldn't check for updates. Are we online?" },
+  { "kind": "checkFailed", "text": "The update check didn't go through. Let's try again later." },
+  { "kind": "installing", "text": "Downloading the update. Back in a moment!" },
+  { "kind": "installing", "text": "Updating now. I'll restart when I'm done!" },
+  { "kind": "installFailed", "text": "The update didn't install. Your current me is fine, though." },
+  { "kind": "installFailed", "text": "Oops, the update hit a snag. Let's try again later." }
+]

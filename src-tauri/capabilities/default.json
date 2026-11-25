@@ -14,6 +14,8 @@
     "core:window:allow-scale-factor",
     "core:window:allow-available-monitors",
     "core:window:allow-primary-monitor",
-    "store:default"
+    "store:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

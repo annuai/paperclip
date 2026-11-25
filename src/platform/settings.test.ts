@@ -61,6 +61,15 @@ describe('presence settings', () => {
   });
 });
 
+describe('update settings', () => {
+  it('default to never checked and nothing mentioned; keep valid values, drop junk', () => {
+    expect(DEFAULTS.updates).toEqual({ lastCheckAt: null, mentionedVersion: null });
+    expect(parseSettings({}).updates).toEqual({ lastCheckAt: null, mentionedVersion: null });
+    expect(parseSettings({ updates: { lastCheckAt: 1700000000000, mentionedVersion: '0.2.0' } }).updates).toEqual({ lastCheckAt: 1700000000000, mentionedVersion: '0.2.0' });
+    expect(parseSettings({ updates: 'x' }).updates).toEqual({ lastCheckAt: null, mentionedVersion: null });
+  });
+});
+
 describe('wellbeing settings', () => {
   it('defaults: stretch on every 60 min, no focus session, meeting heads-up off', () => {
     expect(DEFAULTS.stretch).toEqual({ enabled: true, everyMin: 60 });

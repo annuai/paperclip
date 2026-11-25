@@ -9,6 +9,7 @@ import type { IntervalMin } from './agent/hydration';
 import { DEFAULT_SLEEP, SleepController } from './agent/sleep';
 import { Presence } from './agent/presence';
 import { AskFlow, AskHistory } from './agent/ask';
+import { UpdateFlow } from './agent/updates';
 import type { AskLine, AskModel } from './agent/ask';
 import { FocusTimer, focusLabel } from './agent/focus';
 import { MeetingAlerts, meetingLine } from './agent/meeting';
@@ -26,7 +27,7 @@ import type { FilesDropped } from './platform/tauri';
 import { LocalContentProvider } from './content/provider';
 import type { ContentKind, ContentProvider } from './content/provider';
 import { loadSettings, locateWindow, restorePosition, saveSettings, savePosition, trackPosition, windowSize } from './platform/settings';
-import { askClaude, askFocus, askKeyStatus, askRemoveKey, askSetKey, clearDropped, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import { askClaude, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
 import type { SystemInfo } from './platform/tauri';
 import { WelcomeBack, WelcomeLines } from './agent/welcomeBack';
 import { EyeFollow, EyeTracker, characterClick, computeTarget } from './agent/eyeFollow';
@@ -508,6 +509,23 @@ async function boot(): Promise<void> {
   );
   void askKeyStatus().then((has) => { askKeySet = has; sync(); });
 
+  // ---- Updates: the decisions live in agent/updates.ts. The silent daily check never speaks unless a new version exists. ----
+  let updateState = settings.updates;
+  const updates = new UpdateFlow({
+    check: checkForUpdate,
+    install: installUpdateAndRestart,
+    now: () => Date.now(),
+    state: () => updateState,
+    save: (s) => { updateState = s; void saveSettings({ updates: s }); },
+    line: async (k) => (await content.next(k)).text,
+    say: (text) => agent.speak(text),
+    choose: (text, actions) => agent.ask(text, actions),
+    busy: () => agent.hidden || quiet || focus.active || agent.busy || balloon.visible || menu.visible || sleep.sleeping || reminderOpen || stretchOpen || follow.active,
+  });
+  const UPDATE_TICK_MS = 60 * 60 * 1000; // an hourly look at the clock; the network is touched at most once a day
+  setTimeout(() => void updates.tick(), 45_000); // shortly after launch, once he has settled
+  setInterval(() => void updates.tick(), UPDATE_TICK_MS);
+
   const presenceCtx = (): PresenceCtx => ({
     now: Date.now(),
     hidden: agent.hidden,
@@ -566,6 +584,11 @@ async function boot(): Promise<void> {
           if (id === 'ask-open') await ask.ask();
           else if (id === 'ask-key') await ask.setKey();
           else await ask.removeKey();
+          return;
+        case 'update-check':
+          if (agent.hidden) await showNow(); // from the tray while hidden: bring him back first
+          user();
+          await updates.checkNow();
           return;
         case 'ask-model-haiku':
         case 'ask-model-sonnet':
