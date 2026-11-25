@@ -64,7 +64,9 @@ export interface WellbeingTray {
   meeting: boolean;
   outfits: boolean;
   askKey: boolean; // an API key is stored (enables the tray's "Remove API key")
-  askModel: string;
+  askModel: string; // the OpenRouter model id
+  askProvider: string;
+  askClaudeModel: string;
 }
 export async function syncTray(
   visible: boolean,
@@ -74,11 +76,11 @@ export async function syncTray(
   water = { enabled: true, intervalMin: 45, glasses: 0 },
   greet = true,
   presence = { hidePresenting: true, music: true },
-  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false, outfits: true, askKey: false, askModel: 'claude-haiku-5-5' },
+  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false, outfits: true, askKey: false, askModel: 'google/gemma-4-31b-it:free', askProvider: 'openrouter', askClaudeModel: 'claude-haiku-5-5' },
 ): Promise<void> {
   await guard('sync_tray', () =>
     invoke('sync_tray', {
-      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music, stretchEnabled: wellbeing.stretchEnabled, stretchInterval: wellbeing.stretchInterval, focusLeft: wellbeing.focusLeft, meeting: wellbeing.meeting, outfits: wellbeing.outfits, askKey: wellbeing.askKey, askModel: wellbeing.askModel },
+      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music, stretchEnabled: wellbeing.stretchEnabled, stretchInterval: wellbeing.stretchInterval, focusLeft: wellbeing.focusLeft, meeting: wellbeing.meeting, outfits: wellbeing.outfits, askKey: wellbeing.askKey, askModel: wellbeing.askModel, askProvider: wellbeing.askProvider, askClaudeModel: wellbeing.askClaudeModel },
     }),
   );
 }
@@ -138,30 +140,30 @@ export async function revealZip(): Promise<void> {
 }
 
 // ---- Ask Paperclip. The API key lives in the OS keychain; JS can store, remove and ask "is there one?" but never read it. ----
-export async function askKeyStatus(): Promise<boolean> {
-  return (await guard('ask_key_status', () => invoke<boolean>('ask_key_status'))) === true;
+export async function askKeyStatus(provider: string): Promise<boolean> {
+  return (await guard('ask_key_status', () => invoke<boolean>('ask_key_status', { provider }))) === true;
 }
 /** Stores the key in the keychain. Resolves false when it could not be saved (the value is never logged). */
-export async function askSetKey(key: string): Promise<boolean> {
+export async function askSetKey(key: string, provider: string): Promise<boolean> {
   try {
-    await invoke('ask_set_key', { key });
+    await invoke('ask_set_key', { key, provider });
     return true;
   } catch {
     return false; // deliberately no console output: the argument is a secret
   }
 }
-export async function askRemoveKey(): Promise<void> {
-  await guard('ask_remove_key', () => invoke('ask_remove_key'));
+export async function askRemoveKey(provider: string): Promise<void> {
+  await guard('ask_remove_key', () => invoke('ask_remove_key', { provider }));
 }
-/** One question to Claude (done in Rust, which reads the key itself). Never throws: failures carry a friendly message. */
-export async function askClaude(question: string, history: Turn[], model: string): Promise<AskResult> {
+/** One question to the active provider (done in Rust, which reads the key itself). Never throws: failures carry a friendly message. */
+export async function askQuestion(question: string, history: Turn[], model: string, provider: string): Promise<AskResult> {
   try {
-    const answer = await invoke<string>('ask', { question, history, model });
+    const answer = await invoke<string>('ask', { question, history, model, provider });
     return { ok: true, answer };
   } catch (e) {
     const f = e as Partial<AskFailure> | null;
     if (f && typeof f.message === 'string' && typeof f.kind === 'string') return { ok: false, failure: { kind: f.kind, message: f.message } };
-    return { ok: false, failure: { kind: 'other', message: "Something went wrong when I tried to ask Claude. Try again later." } };
+    return { ok: false, failure: { kind: 'other', message: "Something went wrong when I tried to ask. Try again later." } };
   }
 }
 /** Gives the (normally unfocused) window the keyboard for the ask input, or hands it back afterwards. */

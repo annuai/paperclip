@@ -23,9 +23,20 @@ pub struct TrayHandles {
     focus_stop: MenuItem<Wry>,
     focus_info: MenuItem<Wry>,
     meeting: CheckMenuItem<Wry>,
+    ask_menu: Submenu<Wry>,
+    ask_key: MenuItem<Wry>,
     ask_remove: MenuItem<Wry>,
+    ask_provider_openrouter: CheckMenuItem<Wry>,
+    ask_provider_anthropic: CheckMenuItem<Wry>,
+    /// OpenRouter model radios: free default, Claude Haiku (paid), custom id.
+    ask_free: CheckMenuItem<Wry>,
     ask_haiku: CheckMenuItem<Wry>,
-    ask_sonnet: CheckMenuItem<Wry>,
+    ask_other: CheckMenuItem<Wry>,
+    /// Claude (Anthropic) model radios.
+    ask_claude_haiku: CheckMenuItem<Wry>,
+    ask_claude_sonnet: CheckMenuItem<Wry>,
+    /// Which provider's model radios are currently in the submenu.
+    ask_shown: std::sync::Mutex<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -42,13 +53,25 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let animate = MenuItem::with_id(app, "animate", "Animate!", true, None::<&str>)?;
     // Ask Paperclip: one submenu (the main menu row count is pinned). Same ids as the right-click menu.
     let ask_open = MenuItem::with_id(app, "ask-open", "Ask a question…", true, None::<&str>)?;
-    let ask_key = MenuItem::with_id(app, "ask-key", "Set Claude API key…", true, None::<&str>)?;
+    let ask_key = MenuItem::with_id(app, "ask-key", "Set OpenRouter API key…", true, None::<&str>)?;
     let ask_remove = MenuItem::with_id(app, "ask-remove", "Remove API key", false, None::<&str>)?;
-    let ask_haiku = CheckMenuItem::with_id(app, "ask-model-haiku", "Fast answers (Haiku)", true, true, None::<&str>)?;
-    let ask_sonnet = CheckMenuItem::with_id(app, "ask-model-sonnet", "Smarter answers (Sonnet)", true, false, None::<&str>)?;
+    let ask_provider_openrouter = CheckMenuItem::with_id(app, "ask-provider-openrouter", "OpenRouter", true, true, None::<&str>)?;
+    let ask_provider_anthropic = CheckMenuItem::with_id(app, "ask-provider-anthropic", "Claude (Anthropic)", true, false, None::<&str>)?;
+    let ask_free = CheckMenuItem::with_id(app, "ask-model-free", "Free (Gemma 4 31B)", true, true, None::<&str>)?;
+    let ask_haiku = CheckMenuItem::with_id(app, "ask-model-haiku", "Claude Haiku 5.5 (paid)", true, false, None::<&str>)?;
+    let ask_other = CheckMenuItem::with_id(app, "ask-model-other", "Other model…", true, false, None::<&str>)?;
+    let ask_claude_haiku = CheckMenuItem::with_id(app, "ask-claude-haiku", "Fast answers (Haiku)", true, true, None::<&str>)?;
+    let ask_claude_sonnet = CheckMenuItem::with_id(app, "ask-claude-sonnet", "Smarter answers (Sonnet)", true, false, None::<&str>)?;
     let ask_sep1 = PredefinedMenuItem::separator(app)?;
     let ask_sep2 = PredefinedMenuItem::separator(app)?;
-    let ask_menu = Submenu::with_items(app, "Ask Paperclip", true, &[&ask_open, &ask_sep1, &ask_key, &ask_remove, &ask_sep2, &ask_haiku, &ask_sonnet])?;
+    let ask_sep3 = PredefinedMenuItem::separator(app)?;
+    // Starts with the OpenRouter model radios; `sync_tray` swaps them when the provider changes.
+    let ask_menu = Submenu::with_items(
+        app,
+        "Ask Paperclip",
+        true,
+        &[&ask_open, &ask_sep1, &ask_provider_openrouter, &ask_provider_anthropic, &ask_sep2, &ask_key, &ask_remove, &ask_sep3, &ask_free, &ask_haiku, &ask_other],
+    )?;
     let style_classic = CheckMenuItem::with_id(app, "style-classic", "Classic", true, true, None::<&str>)?;
     let style_flat = CheckMenuItem::with_id(app, "style-flat", "Flat", true, false, None::<&str>)?;
     let style_outfits = CheckMenuItem::with_id(app, "style-outfits", "Seasonal outfits", true, true, None::<&str>)?;
@@ -150,9 +173,17 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         focus_stop: focus_stop.clone(),
         focus_info: focus_info.clone(),
         meeting: meeting.clone(),
+        ask_menu: ask_menu.clone(),
+        ask_key: ask_key.clone(),
         ask_remove: ask_remove.clone(),
+        ask_provider_openrouter: ask_provider_openrouter.clone(),
+        ask_provider_anthropic: ask_provider_anthropic.clone(),
+        ask_free: ask_free.clone(),
         ask_haiku: ask_haiku.clone(),
-        ask_sonnet: ask_sonnet.clone(),
+        ask_other: ask_other.clone(),
+        ask_claude_haiku: ask_claude_haiku.clone(),
+        ask_claude_sonnet: ask_claude_sonnet.clone(),
+        ask_shown: std::sync::Mutex::new("openrouter".to_string()),
     });
 
     let mut builder = TrayIconBuilder::with_id("main").tooltip("Paperclip").menu(&menu);
@@ -233,11 +264,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                         let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked: Some(true) });
                     }
                 }
-                "ask-model-haiku" | "ask-model-sonnet" => {
-                    // Radio behaviour: exactly one of the two stays checked.
-                    let sonnet = id == "ask-model-sonnet";
-                    let _ = ask_haiku.set_checked(!sonnet);
-                    let _ = ask_sonnet.set_checked(sonnet);
+                // Radios: the frontend decides, then pushes the truth back through `sync_tray` (which sets every check).
+                "ask-provider-openrouter" | "ask-provider-anthropic" | "ask-model-free" | "ask-model-haiku" | "ask-model-other" | "ask-claude-haiku" | "ask-claude-sonnet" => {
                     let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked: Some(true) });
                 }
                 "meeting" => {
@@ -298,6 +326,10 @@ pub struct TraySync {
     /// An API key for Ask Paperclip is stored (enables "Remove API key").
     ask_key: bool,
     ask_model: String,
+    /// `"openrouter"` or `"anthropic"`.
+    ask_provider: String,
+    /// `claude-haiku-5-5` or `claude-sonnet-5-5` (used by the Anthropic provider).
+    ask_claude_model: String,
 }
 
 #[tauri::command]
@@ -330,8 +362,40 @@ pub fn sync_tray(app: AppHandle, state: State<'_, TrayHandles>, sync: TraySync) 
     state.style_outfits.set_checked(sync.outfits).map_err(|e| e.to_string())?;
     state.meeting.set_checked(sync.meeting).map_err(|e| e.to_string())?;
     state.ask_remove.set_enabled(sync.ask_key).map_err(|e| e.to_string())?;
-    state.ask_haiku.set_checked(sync.ask_model != "claude-sonnet-5-5").map_err(|e| e.to_string())?;
-    state.ask_sonnet.set_checked(sync.ask_model == "claude-sonnet-5-5").map_err(|e| e.to_string())?;
+    let anthropic = sync.ask_provider == "anthropic";
+    state.ask_provider_openrouter.set_checked(!anthropic).map_err(|e| e.to_string())?;
+    state.ask_provider_anthropic.set_checked(anthropic).map_err(|e| e.to_string())?;
+    state.ask_key.set_text(if anthropic { "Set Claude API key…" } else { "Set OpenRouter API key…" }).map_err(|e| e.to_string())?;
+    let free = sync.ask_model == "google/gemma-4-31b-it:free";
+    let paid = sync.ask_model == "anthropic/claude-haiku-5.5";
+    state.ask_free.set_checked(free).map_err(|e| e.to_string())?;
+    state.ask_haiku.set_checked(paid).map_err(|e| e.to_string())?;
+    state.ask_other.set_checked(!free && !paid).map_err(|e| e.to_string())?;
+    // The custom id is shown as the third radio's label (the frontend only stores ids of the validated shape).
+    let other_label = if free || paid || sync.ask_model.len() > 100 { "Other model…".to_string() } else { sync.ask_model.clone() };
+    state.ask_other.set_text(other_label).map_err(|e| e.to_string())?;
+    state.ask_claude_haiku.set_checked(sync.ask_claude_model != "claude-sonnet-5-5").map_err(|e| e.to_string())?;
+    state.ask_claude_sonnet.set_checked(sync.ask_claude_model == "claude-sonnet-5-5").map_err(|e| e.to_string())?;
+    // Only the active provider's model radios are in the submenu.
+    let want = if anthropic { "anthropic" } else { "openrouter" };
+    if let Ok(mut shown) = state.ask_shown.lock() {
+        if *shown != want {
+            let _ = state.ask_menu.remove(&state.ask_free);
+            let _ = state.ask_menu.remove(&state.ask_haiku);
+            let _ = state.ask_menu.remove(&state.ask_other);
+            let _ = state.ask_menu.remove(&state.ask_claude_haiku);
+            let _ = state.ask_menu.remove(&state.ask_claude_sonnet);
+            if anthropic {
+                let _ = state.ask_menu.append(&state.ask_claude_haiku);
+                let _ = state.ask_menu.append(&state.ask_claude_sonnet);
+            } else {
+                let _ = state.ask_menu.append(&state.ask_free);
+                let _ = state.ask_menu.append(&state.ask_haiku);
+                let _ = state.ask_menu.append(&state.ask_other);
+            }
+            *shown = want.to_string();
+        }
+    }
     if let Some(tray) = app.tray_by_id("main") {
         // The time left, where the user looks: the tooltip everywhere, plus a short title next to the macOS icon.
         let tip = match sync.focus_left {

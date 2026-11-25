@@ -3,6 +3,8 @@ export interface InteractionHandlers {
   doubleClick(): void;
   /** Three quick clicks on the clip (never the mat). */
   tripleClick(): void;
+  /** Middle mouse button on the clip (never the mat): a quote, at once. */
+  middleClick(): void;
   contextMenu(x: number, y: number): void;
   dragStart(): void;
   /** A click on the yoga mat (not the clip): bounce. Fires on every tap, no click delay. */
@@ -24,6 +26,9 @@ export function attachInteraction(
   let sx = 0;
   let sy = 0;
   let clickTimer: ReturnType<typeof setTimeout> | null = null;
+  let midArmed = false; // middle button pressed on the clip; fires on release nearby
+  let mx = 0;
+  let my = 0;
   let clicks = 0; // our own counter: more predictable than MouseEvent.detail across webviews
 
   const clearClick = () => {
@@ -31,6 +36,13 @@ export function attachInteraction(
     clicks = 0;
   };
   const onDown = (e: MouseEvent) => {
+    if (e.button === 1) {
+      e.preventDefault(); // no autoscroll / paste-on-middle-click
+      midArmed = !onMat(e);
+      mx = e.clientX;
+      my = e.clientY;
+      return;
+    }
     if (e.button !== 0) return;
     armed = true;
     sx = e.clientX;
@@ -46,6 +58,12 @@ export function attachInteraction(
     }
   };
   const onUp = (e: MouseEvent) => {
+    if (e.button === 1) {
+      const fire = midArmed && Math.hypot(e.clientX - mx, e.clientY - my) <= DRAG_THRESHOLD;
+      midArmed = false;
+      if (fire) { clearClick(); h.middleClick(); }
+      return;
+    }
     if (e.button !== 0 || !armed) return;
     armed = false;
     if (onMat(e)) { h.matTap(); return; } // mat taps bounce at once and never count toward a multi-click
@@ -65,7 +83,7 @@ export function attachInteraction(
     armed = false;
     h.contextMenu(e.clientX, e.clientY);
   };
-  const onBlur = () => { armed = false; };
+  const onBlur = () => { armed = false; midArmed = false; };
 
   target.addEventListener('mousedown', onDown);
   window.addEventListener('mousemove', onMove);

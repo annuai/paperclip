@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AskFlow, AskHistory, DEFAULT_ASK_MODEL, MAX_QUESTION_CHARS, normalizeAskModel } from './ask';
+import { AskFlow, AskHistory, DEFAULT_ASK_MODEL, MAX_QUESTION_CHARS, DEFAULT_ASK_PROVIDER, isValidModelId, normalizeAskModel, normalizeAskProvider, normalizeClaudeModel, providerName } from './ask';
 import type { AskDeps, AskResult, Turn } from './ask';
 import type { PromptOpts } from './agent';
 
@@ -16,12 +16,32 @@ describe('AskHistory', () => {
   });
 });
 
-describe('normalizeAskModel', () => {
-  it('accepts the two models and defaults everything else to haiku', () => {
-    expect(DEFAULT_ASK_MODEL).toBe('claude-haiku-5-5');
-    expect(normalizeAskModel('claude-sonnet-5-5')).toBe('claude-sonnet-5-5');
-    expect(normalizeAskModel('claude-opus-5-5')).toBe('claude-haiku-5-5');
-    expect(normalizeAskModel(undefined)).toBe('claude-haiku-5-5');
+describe('provider and model normalizing', () => {
+  it('provider defaults to openrouter; only "anthropic" switches', () => {
+    expect(DEFAULT_ASK_PROVIDER).toBe('openrouter');
+    expect(normalizeAskProvider(undefined)).toBe('openrouter');
+    expect(normalizeAskProvider('x')).toBe('openrouter');
+    expect(normalizeAskProvider('anthropic')).toBe('anthropic');
+    expect(providerName('openrouter')).toBe('OpenRouter');
+    expect(providerName('anthropic')).toBe('Claude');
+  });
+  it('OpenRouter model: free default, any valid id kept, old claude-* ids and junk become the default', () => {
+    expect(DEFAULT_ASK_MODEL).toBe('google/gemma-4-31b-it:free');
+    expect(normalizeAskModel('anthropic/claude-haiku-5.5')).toBe('anthropic/claude-haiku-5.5');
+    expect(normalizeAskModel('mistralai/mistral-small:free')).toBe('mistralai/mistral-small:free');
+    expect(normalizeAskModel('claude-haiku-5-5')).toBe('google/gemma-4-31b-it:free');
+    expect(normalizeAskModel('claude-sonnet-5-5')).toBe('google/gemma-4-31b-it:free');
+    expect(normalizeAskModel(undefined)).toBe('google/gemma-4-31b-it:free');
+  });
+  it('Claude model: the two ids, anything else is Haiku', () => {
+    expect(normalizeClaudeModel('claude-sonnet-5-5')).toBe('claude-sonnet-5-5');
+    expect(normalizeClaudeModel('claude-haiku-5-5')).toBe('claude-haiku-5-5');
+    expect(normalizeClaudeModel('claude-opus-5-5')).toBe('claude-haiku-5-5');
+    expect(normalizeClaudeModel('anthropic/claude-sonnet-5.5')).toBe('claude-haiku-5-5');
+  });
+  it('validates model ids', () => {
+    for (const ok of ['openai/gpt-5', 'a/b', 'x~y/z.1:free']) expect(isValidModelId(ok), ok).toBe(true);
+    for (const bad of ['', 'nogroup', 'a/b/c', 'a /b', 'a/b c', '/b', 'a/', `a/${'b'.repeat(100)}`, 5]) expect(isValidModelId(bad), String(bad)).toBe(false);
   });
 });
 
@@ -33,7 +53,7 @@ interface Rig {
   log: string[];
   prompts: { text: string; opts: PromptOpts }[];
   queries: { q: string; turns: Turn[] }[];
-  state: { key: boolean; intro: boolean; epoch: number; savedKeys: string[]; saveOk: boolean };
+  state: { key: boolean; intro: boolean; epoch: number; savedKeys: string[]; saveOk: boolean; models: string[] };
   /** answers the next prompt()s with these values */
   typed: (string | null)[];
   choices: string[];
@@ -46,7 +66,7 @@ function rig(): Rig {
     log: [] as string[],
     prompts: [] as Rig['prompts'],
     queries: [] as Rig['queries'],
-    state: { key: true, intro: true, epoch: 0, savedKeys: [] as string[], saveOk: true },
+    state: { key: true, intro: true, epoch: 0, savedKeys: [] as string[], saveOk: true, models: [] as string[] },
     typed: [] as (string | null)[],
     choices: [] as string[],
     results: [] as AskResult[],
@@ -64,6 +84,7 @@ function rig(): Rig {
     query: async (q, turns) => { r.queries.push({ q, turns }); r.log.push('query'); return r.results.shift() ?? ok('default answer'); },
     saveKey: async (k) => { r.state.savedKeys.push(k); return r.state.saveOk; },
     removeKey: async () => { r.state.key = false; r.log.push('removeKey'); },
+    setModel: (id) => { r.state.models.push(id); },
     epoch: () => r.state.epoch,
   };
   r.flow = new AskFlow(deps, r.history);
@@ -218,6 +239,30 @@ describe('AskFlow: API key entry', () => {
     await r.flow.removeKey();
     expect(r.log).toEqual(['removeKey', 'say:line:keyRemoved']);
     expect(r.history.turns()).toEqual([]);
+  });
+});
+
+describe('AskFlow: other model', () => {
+  it('a valid id is stored and confirmed', async () => {
+    const r = rig();
+    r.typed.push('  openai/gpt-5-mini ');
+    await r.flow.chooseModel();
+    expect(r.state.models).toEqual(['openai/gpt-5-mini']);
+    expect(r.log).toContain('say:line:modelSaved');
+    expect(r.prompts[0].opts.secret).toBe(false);
+    expect(r.queries).toHaveLength(0);
+  });
+  it('an invalid id is refused; Esc and blank do nothing', async () => {
+    const r = rig();
+    r.typed.push('not a model');
+    await r.flow.chooseModel();
+    expect(r.log).toContain('say:line:modelInvalid');
+    r.typed.push(null);
+    await r.flow.chooseModel();
+    r.typed.push('  ');
+    await r.flow.chooseModel();
+    expect(r.state.models).toEqual([]);
+    expect(r.flow.state).toBe('idle');
   });
 });
 

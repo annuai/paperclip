@@ -9,7 +9,7 @@ function setup() {
   const host = document.getElementById('character') as HTMLElement;
   const renderer = new Renderer(host, 'classic');
   const startDragging = vi.fn(() => Promise.resolve());
-  const handlers = { click: vi.fn(), doubleClick: vi.fn(), tripleClick: vi.fn(), contextMenu: vi.fn(), dragStart: vi.fn(), matTap: vi.fn() };
+  const handlers = { click: vi.fn(), doubleClick: vi.fn(), tripleClick: vi.fn(), middleClick: vi.fn(), contextMenu: vi.fn(), dragStart: vi.fn(), matTap: vi.fn() };
   attachInteraction(characterHitTarget(host), handlers, startDragging);
   return { host, renderer, startDragging, handlers };
 }
@@ -162,5 +162,43 @@ describe('interaction survives style switching', () => {
       expect(handlers.tripleClick).not.toHaveBeenCalled();
       vi.useRealTimers();
     });
+  });
+});
+
+describe('middle click', () => {
+  const mid = (el: Element, x = 50, y = 50) => {
+    el.dispatchEvent(new MouseEvent('mousedown', { button: 1, clientX: x, clientY: y, bubbles: true }));
+    el.dispatchEvent(new MouseEvent('mouseup', { button: 1, clientX: x, clientY: y, bubbles: true }));
+  };
+  it('on the clip calls middleClick() at once, and nothing else', () => {
+    vi.useFakeTimers();
+    const { host, handlers } = setup();
+    mid(host.querySelector('#wire') as SVGElement);
+    expect(handlers.middleClick).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    expect(handlers.click).not.toHaveBeenCalled();
+    expect(handlers.doubleClick).not.toHaveBeenCalled();
+    expect(handlers.tripleClick).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+  it('on the mat does nothing', () => {
+    const { host, handlers } = setup();
+    mid(host.querySelector('#mat') as SVGGElement);
+    expect(handlers.middleClick).not.toHaveBeenCalled();
+    expect(handlers.matTap).not.toHaveBeenCalled();
+  });
+  it('does not fire if the pointer moved away between press and release', () => {
+    const { host, handlers } = setup();
+    const wire = host.querySelector('#wire') as SVGElement;
+    wire.dispatchEvent(new MouseEvent('mousedown', { button: 1, clientX: 50, clientY: 50, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('mouseup', { button: 1, clientX: 90, clientY: 90, bubbles: true }));
+    expect(handlers.middleClick).not.toHaveBeenCalled();
+  });
+  it('never starts a drag', () => {
+    const { host, startDragging } = setup();
+    const wire = host.querySelector('#wire') as SVGElement;
+    wire.dispatchEvent(new MouseEvent('mousedown', { button: 1, clientX: 50, clientY: 50, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 80, clientY: 80, bubbles: true }));
+    expect(startDragging).not.toHaveBeenCalled();
   });
 });

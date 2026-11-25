@@ -21,7 +21,7 @@ export async function loadSettings(): Promise<Settings> {
     const s = await getStore();
     if (!s) return { ...DEFAULTS };
     const raw: Record<string, unknown> = {};
-    for (const k of ['quiet', 'scheduler', 'position', 'hidden', 'style', 'water', 'greetOnUnlock', 'hideWhenPresenting', 'reactToMusic', 'stretch', 'focus', 'meetingHeadsUp', 'outfits', 'askModel', 'askIntroSeen', 'updates']) raw[k] = await s.get(k);
+    for (const k of ['quiet', 'scheduler', 'position', 'hidden', 'style', 'water', 'greetOnUnlock', 'hideWhenPresenting', 'reactToMusic', 'stretch', 'focus', 'meetingHeadsUp', 'outfits', 'askProvider', 'askClaudeModel', 'askModel', 'askIntroSeen', 'updates']) raw[k] = await s.get(k);
     return parseSettings(raw);
   } catch (e) {
     console.warn('loadSettings failed', e);

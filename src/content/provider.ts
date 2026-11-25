@@ -20,7 +20,7 @@ export type ContentKind = 'greeting' | 'quote' | 'joke' | 'tip' | 'dizzy' | 'sle
   | 'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting'
   | 'zipDone' | 'zipFail' | 'zipNo'
   | 'updateUpToDate' | 'updateAvailable' | 'updateCheckFailed' | 'updateInstalling' | 'updateInstallFailed'
-  | 'askIntro' | 'askPrompt' | 'askAgain' | 'askKeyPrompt' | 'askKeySaved' | 'askKeyRemoved' | 'askKeyFailed';
+  | 'askIntro' | 'askPrompt' | 'askAgain' | 'askKeyPrompt' | 'askKeySaved' | 'askKeyRemoved' | 'askKeyFailed' | 'askModelPrompt' | 'askModelSaved' | 'askModelInvalid';
 export interface ContentItem { kind: ContentKind; text: string; attribution?: string }
 export interface ContentProvider { next(kind: ContentKind, ctx?: { now?: Date }): Promise<ContentItem> }
 
@@ -46,7 +46,7 @@ export class LocalContentProvider implements ContentProvider {
   private readonly presenceBags: Record<'lowBattery' | 'overheating' | 'lateNight', ShuffleBag<string>>;
   private readonly wellbeingBags: Record<'stretch' | 'stretchDone' | 'focusStart' | 'focusDone' | 'focusBreak' | 'meeting', ShuffleBag<string>>;
 
-  private readonly askBags: Record<'intro' | 'prompt' | 'again' | 'keyPrompt' | 'keySaved' | 'keyRemoved' | 'keyFailed', ShuffleBag<string>>;
+  private readonly askBags: Record<'intro' | 'prompt' | 'again' | 'keyPrompt' | 'keySaved' | 'keyRemoved' | 'keyFailed' | 'modelPrompt' | 'modelSaved' | 'modelInvalid', ShuffleBag<string>>;
   private readonly updateBags: Record<'upToDate' | 'available' | 'checkFailed' | 'installing' | 'installFailed', ShuffleBag<string>>;
   private readonly fileBags: Record<'zipDone' | 'zipFail' | 'zipNo', ShuffleBag<string>>;
 
@@ -92,6 +92,9 @@ export class LocalContentProvider implements ContentProvider {
       keySaved: lines(ask, 'keySaved'),
       keyRemoved: lines(ask, 'keyRemoved'),
       keyFailed: lines(ask, 'keyFailed'),
+      modelPrompt: lines(ask, 'modelPrompt'),
+      modelSaved: lines(ask, 'modelSaved'),
+      modelInvalid: lines(ask, 'modelInvalid'),
     };
     this.wellbeingBags = {
       stretch: lines(stretch, 'stretch'),
@@ -152,7 +155,10 @@ export class LocalContentProvider implements ContentProvider {
       case 'askKeyPrompt':
       case 'askKeySaved':
       case 'askKeyRemoved':
-      case 'askKeyFailed': {
+      case 'askKeyFailed':
+      case 'askModelPrompt':
+      case 'askModelSaved':
+      case 'askModelInvalid': {
         const k = (kind.slice(3, 4).toLowerCase() + kind.slice(4)) as keyof typeof this.askBags;
         return { kind, text: this.askBags[k].next() };
       }

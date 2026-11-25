@@ -1,6 +1,6 @@
 [
-  {"kind": "intro", "text": "Ask me anything! Only what you type here goes to Claude. Nothing else from your computer."},
-  {"kind": "intro", "text": "A question? Only the words you type are sent to Claude: no screen, clipboard or files."},
+  {"kind": "intro", "text": "Ask me anything! Only what you type goes to {provider} and the model you picked. Nothing else."},
+  {"kind": "intro", "text": "Only the words you type go to {provider} and your model: no screen, clipboard or files."},
   {"kind": "prompt", "text": "What's on your mind?"},
   {"kind": "prompt", "text": "It looks like you have a question. Fire away!"},
   {"kind": "prompt", "text": "Go ahead, I'm all ears. Well, all clip."},
@@ -9,8 +9,8 @@
   {"kind": "again", "text": "Anything else? I'm still here."},
   {"kind": "again", "text": "Go on, I'm listening."},
   {"kind": "again", "text": "Another question? Bring it on."},
-  {"kind": "keyPrompt", "text": "Paste your Claude API key. It stays in your keychain; only what you type goes to Claude."},
-  {"kind": "keyPrompt", "text": "I need a Claude API key. It lives in your keychain, and Claude only sees what you type."},
+  {"kind": "keyPrompt", "text": "Paste your {provider} API key. It stays in your keychain; only what you type is sent."},
+  {"kind": "keyPrompt", "text": "I need a {provider} API key. It lives in your keychain, and only what you type is sent."},
   {"kind": "keySaved", "text": "Got it! Your key is safe in the keychain. Ask me anything."},
   {"kind": "keySaved", "text": "Key saved to your keychain. Now we're talking!"},
   {"kind": "keySaved", "text": "All set! The key is tucked away in your keychain."},
@@ -19,5 +19,11 @@
   {"kind": "keyRemoved", "text": "Poof! Key gone, conversation forgotten."},
   {"kind": "keyFailed", "text": "I couldn't save that key to your keychain. Try again?"},
   {"kind": "keyFailed", "text": "The keychain wouldn't take the key. Maybe try once more?"},
-  {"kind": "keyFailed", "text": "Hmm, that key didn't save. Want to try again?"}
+  {"kind": "keyFailed", "text": "Hmm, that key didn't save. Want to try again?"},
+  {"kind": "modelPrompt", "text": "Type an OpenRouter model id, like openai/gpt-5-mini."},
+  {"kind": "modelPrompt", "text": "Which model? Paste its OpenRouter id, e.g. vendor/model-name."},
+  {"kind": "modelSaved", "text": "Done! I'll use that model from now on."},
+  {"kind": "modelSaved", "text": "Model switched. Ask away!"},
+  {"kind": "modelInvalid", "text": "That doesn't look like a model id. It should be vendor/model-name."},
+  {"kind": "modelInvalid", "text": "Hmm, model ids look like vendor/model-name. Try the menu again?"}
 ]

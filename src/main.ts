@@ -8,9 +8,9 @@ import { HydrationScheduler } from './agent/hydration';
 import type { IntervalMin } from './agent/hydration';
 import { DEFAULT_SLEEP, SleepController } from './agent/sleep';
 import { Presence } from './agent/presence';
-import { AskFlow, AskHistory } from './agent/ask';
+import { AskFlow, AskHistory, FREE_MODEL, PAID_HAIKU_MODEL, providerName } from './agent/ask';
 import { UpdateFlow } from './agent/updates';
-import type { AskLine, AskModel } from './agent/ask';
+import type { AskLine, AskModel, AskProvider, ClaudeModel } from './agent/ask';
 import { FocusTimer, focusLabel } from './agent/focus';
 import { MeetingAlerts, meetingLine } from './agent/meeting';
 import type { CalEvent } from './agent/meeting';
@@ -27,7 +27,7 @@ import type { FilesDropped } from './platform/tauri';
 import { LocalContentProvider } from './content/provider';
 import type { ContentKind, ContentProvider } from './content/provider';
 import { loadSettings, locateWindow, restorePosition, saveSettings, savePosition, trackPosition, windowSize } from './platform/settings';
-import { askClaude, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import { askQuestion, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
 import type { SystemInfo } from './platform/tauri';
 import { WelcomeBack, WelcomeLines } from './agent/welcomeBack';
 import { EyeFollow, EyeTracker, characterClick, computeTarget } from './agent/eyeFollow';
@@ -60,7 +60,9 @@ async function boot(): Promise<void> {
   let reactToMusic = settings.reactToMusic;
   let meetingHeadsUp = settings.meetingHeadsUp;
   let outfitSetting = settings.outfits;
-  let askModel: AskModel = settings.askModel;
+  let askModel: AskModel = settings.askModel; // the OpenRouter model id
+  let askClaudeModel: ClaudeModel = settings.askClaudeModel;
+  let askProvider: AskProvider = settings.askProvider;
   let askIntroSeen = settings.askIntroSeen;
   let askKeySet = false; // whether the keychain holds a key (JS can ask, never read it); filled in below at boot
   let calendarOk = false; // macOS only: set once the platform answers, hides the Meeting heads-up toggle elsewhere
@@ -426,6 +428,8 @@ async function boot(): Promise<void> {
       outfits: outfitSetting === 'auto',
       askKey: askKeySet,
       askModel,
+      askProvider,
+      askClaudeModel,
     });
   sleep.onChange(() => {
     if (sleep.sleeping) follow.end('sleep');
@@ -481,7 +485,30 @@ async function boot(): Promise<void> {
   };
 
   // ---- Ask Paperclip: the conversation logic is agent/ask.ts; this only supplies the pieces it needs ----
-  const askLine = async (k: AskLine): Promise<string> => (await content.next(`ask${k[0].toUpperCase()}${k.slice(1)}` as ContentKind)).text;
+  // Lines may say {provider}: the privacy promise and the key prompt always name the service that is active.
+  const askLine = async (k: AskLine): Promise<string> =>
+    (await content.next(`ask${k[0].toUpperCase()}${k.slice(1)}` as ContentKind)).text.replaceAll('{provider}', providerName(askProvider));
+  const setAskModel = (id: AskModel) => {
+    askModel = id;
+    void saveSettings({ askModel });
+    sync();
+  };
+  const setClaudeModel = (id: ClaudeModel) => {
+    askClaudeModel = id;
+    void saveSettings({ askClaudeModel });
+    sync();
+  };
+  const activeModel = (): string => (askProvider === 'anthropic' ? askClaudeModel : askModel);
+  /** Switching provider: each has its own key, so the key state is re-read, and the chat is forgotten (new recipient). */
+  const setAskProvider = (p: AskProvider) => {
+    if (p === askProvider) { sync(); return; }
+    askProvider = p;
+    void saveSettings({ askProvider });
+    ask.reset();
+    askKeySet = false;
+    sync();
+    void askKeyStatus(p).then((has) => { if (askProvider === p) { askKeySet = has; sync(); } });
+  };
   const ask = new AskFlow(
     {
       hasKey: () => askKeySet,
@@ -493,21 +520,23 @@ async function boot(): Promise<void> {
       choose: (text, actions) => agent.ask(text, actions),
       think: () => agent.hold('Thinking'),
       query: async (q, turns) => {
-        const r = await askClaude(q, turns, askModel);
+        const r = await askQuestion(q, turns, activeModel(), askProvider);
         if (!r.ok && r.failure.kind === 'noKey') { askKeySet = false; sync(); } // removed behind our back
         return r;
       },
       saveKey: async (key) => {
-        const ok = await askSetKey(key);
-        if (ok) { askKeySet = true; sync(); }
+        const p = askProvider;
+        const ok = await askSetKey(key, p);
+        if (ok && p === askProvider) { askKeySet = true; sync(); }
         return ok;
       },
-      removeKey: async () => { await askRemoveKey(); askKeySet = false; sync(); },
+      removeKey: async () => { await askRemoveKey(askProvider); askKeySet = false; sync(); },
+      setModel: (id) => setAskModel(id),
       epoch: () => agent.epoch,
     },
     new AskHistory(),
   );
-  void askKeyStatus().then((has) => { askKeySet = has; sync(); });
+  void askKeyStatus(askProvider).then((has) => { askKeySet = has; sync(); });
 
   // ---- Updates: the decisions live in agent/updates.ts. The silent daily check never speaks unless a new version exists. ----
   let updateState = settings.updates;
@@ -590,11 +619,25 @@ async function boot(): Promise<void> {
           user();
           await updates.checkNow();
           return;
+        case 'ask-model-free':
+          setAskModel(FREE_MODEL);
+          return;
         case 'ask-model-haiku':
-        case 'ask-model-sonnet':
-          askModel = id === 'ask-model-sonnet' ? 'claude-sonnet-5-5' : 'claude-haiku-5-5';
-          void saveSettings({ askModel });
-          sync();
+          setAskModel(PAID_HAIKU_MODEL);
+          return;
+        case 'ask-claude-haiku':
+        case 'ask-claude-sonnet':
+          setClaudeModel(id === 'ask-claude-sonnet' ? 'claude-sonnet-5-5' : 'claude-haiku-5-5');
+          return;
+        case 'ask-provider-openrouter':
+        case 'ask-provider-anthropic':
+          setAskProvider(id === 'ask-provider-anthropic' ? 'anthropic' : 'openrouter');
+          return;
+        case 'ask-model-other':
+          if (agent.hidden) await showNow();
+          user();
+          await ask.chooseModel();
+          sync(); // the radios may have been flipped by the tray before the id was accepted
           return;
         case 'water-enabled':
           hydration.setConfig({ enabled: checked ?? !hydration.config.enabled });
@@ -732,7 +775,7 @@ async function boot(): Promise<void> {
     focusLeft: focusLeft(),
     calendarSupported: calendarOk,
     meetingHeadsUp,
-    ask: { keySet: askKeySet, model: askModel },
+    ask: { keySet: askKeySet, provider: askProvider, model: askModel, claudeModel: askClaudeModel },
   });
 
   // Throwing: rAF runs only while he is flying (see agent/thrower.ts). Physics are in physical px on the monitor he is on.
@@ -804,6 +847,11 @@ async function boot(): Promise<void> {
         if (sleep.sleeping) { void sleep.wake('doubleClick'); return; }
         user();
         void speakKind('quote'); // same as the menu's "Give a quote"
+      },
+      middleClick: () => {
+        if (sleep.sleeping) { void sleep.wake('doubleClick'); return; }
+        user();
+        void speakKind('quote');
       },
       contextMenu: (x, y) => {
         scheduler.notifyActivity();

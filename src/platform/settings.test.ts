@@ -106,14 +106,26 @@ describe('outfits setting', () => {
 });
 
 describe('ask settings', () => {
-  it('defaults: Haiku, intro not yet shown', () => {
-    expect(DEFAULTS.askModel).toBe('claude-haiku-5-5');
+  it('defaults: OpenRouter, the free model, Claude Haiku for the optional provider, intro not yet shown', () => {
+    expect(DEFAULTS.askProvider).toBe('openrouter');
+    expect(DEFAULTS.askModel).toBe('google/gemma-4-31b-it:free');
+    expect(DEFAULTS.askClaudeModel).toBe('claude-haiku-5-5');
     expect(DEFAULTS.askIntroSeen).toBe(false);
-    expect(parseSettings({}).askModel).toBe('claude-haiku-5-5');
+    const p = parseSettings({});
+    expect([p.askProvider, p.askModel, p.askClaudeModel]).toEqual(['openrouter', 'google/gemma-4-31b-it:free', 'claude-haiku-5-5']);
   });
-  it('accepts only the two known models and a literal true intro flag', () => {
-    expect(parseSettings({ askModel: 'claude-sonnet-5-5' }).askModel).toBe('claude-sonnet-5-5');
-    expect(parseSettings({ askModel: 'claude-opus-5-5' }).askModel).toBe('claude-haiku-5-5');
+  it('existing users with an old claude-* askModel: provider openrouter + free model, the Claude choice is kept', () => {
+    const a = parseSettings({ askModel: 'claude-sonnet-5-5' });
+    expect([a.askProvider, a.askModel, a.askClaudeModel]).toEqual(['openrouter', 'google/gemma-4-31b-it:free', 'claude-sonnet-5-5']);
+    const b = parseSettings({ askModel: 'claude-haiku-5-5' });
+    expect([b.askProvider, b.askModel, b.askClaudeModel]).toEqual(['openrouter', 'google/gemma-4-31b-it:free', 'claude-haiku-5-5']);
+  });
+  it('new values: valid OpenRouter ids kept, explicit claude model wins, provider anthropic is honoured, junk defaults', () => {
+    const a = parseSettings({ askProvider: 'anthropic', askClaudeModel: 'claude-sonnet-5-5', askModel: 'openai/gpt-5-mini' });
+    expect([a.askProvider, a.askModel, a.askClaudeModel]).toEqual(['anthropic', 'openai/gpt-5-mini', 'claude-sonnet-5-5']);
+    expect(parseSettings({ askModel: 'meta-llama/llama-3:free' }).askModel).toBe('meta-llama/llama-3:free');
+    expect(parseSettings({ askModel: 'a b/c' }).askModel).toBe('google/gemma-4-31b-it:free');
+    expect(parseSettings({ askModel: 42, askProvider: 'bing' }).askProvider).toBe('openrouter');
     expect(parseSettings({ askIntroSeen: true }).askIntroSeen).toBe(true);
     expect(parseSettings({ askIntroSeen: 'yes' }).askIntroSeen).toBe(false);
   });

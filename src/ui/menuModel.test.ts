@@ -7,7 +7,7 @@ const base: MenuState = {
   sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, outfits: true, style: 'classic',
   water: { enabled: true, intervalMin: 45, glassesToday: 2 },
   stretch: { enabled: true, everyMin: 60 }, focusLeft: null, calendarSupported: true, meetingHeadsUp: false,
-  ask: { keySet: false, model: 'claude-haiku-5-5' },
+  ask: { keySet: false, provider: 'openrouter', model: 'google/gemma-4-31b-it:free', claudeModel: 'claude-haiku-5-5' },
 };
 const flat = (items: MenuItem[]): MenuItem[] => items.flatMap((i) => [i, ...flat(i.children ?? [])]);
 const find = (items: MenuItem[], id: string) => flat(items).find((i) => i.id === id);
@@ -18,15 +18,40 @@ describe('main menu', () => {
     expect(m.map((i) => i.id)).toEqual(['hi', 'joke', 'quote', 'tip', 'ask', 'animate', 'nap', 'quiet', 'greet', 'presence', 'style', 'wellbeing', 'hide', 'quit']);
   });
 
-  it('Ask Paperclip: ask, set key, model radios; "Remove API key" only once a key is stored', () => {
-    expect(find(buildMenu(base), 'ask')?.children?.map((c) => c.id)).toEqual(['ask-open', 'ask-key', 'ask-model-haiku', 'ask-model-sonnet']);
-    const withKey = buildMenu({ ...base, ask: { keySet: true, model: 'claude-sonnet-5-5' } });
-    expect(find(withKey, 'ask')?.children?.map((c) => c.id)).toEqual(['ask-open', 'ask-key', 'ask-remove', 'ask-model-haiku', 'ask-model-sonnet']);
-    expect(find(withKey, 'ask-model-sonnet')?.checked).toBe(true);
-    expect(find(withKey, 'ask-model-haiku')?.checked).toBe(false);
-    expect(find(buildMenu(base), 'ask-model-haiku')?.checked).toBe(true);
-    expect(find(buildMenu(base), 'ask-open')?.label).toBe('Ask a question…');
-    expect(find(buildMenu(base), 'ask-key')?.label).toBe('Set Claude API key…');
+  it('Ask Paperclip (OpenRouter): ask, provider radios, key, free / paid / other model radios; "Remove API key" only with a key', () => {
+    const ids = (m: MenuState) => find(buildMenu(m), 'ask')?.children?.map((c) => c.id);
+    expect(ids(base)).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-anthropic', 'ask-key', 'ask-model-free', 'ask-model-haiku', 'ask-model-other']);
+    expect(ids({ ...base, ask: { ...base.ask, keySet: true } })).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-anthropic', 'ask-key', 'ask-remove', 'ask-model-free', 'ask-model-haiku', 'ask-model-other']);
+    const m = buildMenu(base);
+    expect(find(m, 'ask-provider-openrouter')?.checked).toBe(true);
+    expect(find(m, 'ask-provider-anthropic')?.checked).toBe(false);
+    expect(find(m, 'ask-model-free')?.checked).toBe(true);
+    expect(find(m, 'ask-model-free')?.label).toBe('Free (Gemma 4 31B)');
+    expect(find(m, 'ask-model-haiku')?.label).toBe('Claude Haiku 5.5 (paid)');
+    expect(find(m, 'ask-model-haiku')?.checked).toBe(false);
+    expect(find(m, 'ask-model-other')?.checked).toBe(false);
+    expect(find(m, 'ask-model-other')?.label).toBe('Other model…');
+    expect(find(m, 'ask-key')?.label).toBe('Set OpenRouter API key…');
+    expect(find(m, 'ask-open')?.label).toBe('Ask a question…');
+    const paid = buildMenu({ ...base, ask: { ...base.ask, model: 'anthropic/claude-haiku-5.5' } });
+    expect(find(paid, 'ask-model-haiku')?.checked).toBe(true);
+    expect(find(paid, 'ask-model-free')?.checked).toBe(false);
+    const custom = buildMenu({ ...base, ask: { ...base.ask, model: 'openai/gpt-5-mini' } });
+    expect(find(custom, 'ask-model-other')?.checked).toBe(true);
+    expect(find(custom, 'ask-model-other')?.label).toBe('openai/gpt-5-mini');
+    expect(find(custom, 'ask-model-free')?.checked).toBe(false);
+    expect(find(custom, 'ask-model-haiku')?.checked).toBe(false);
+  });
+
+  it('Ask Paperclip (Claude): only the Claude model radios, and the key item names Claude', () => {
+    const a = buildMenu({ ...base, ask: { keySet: true, provider: 'anthropic', model: 'google/gemma-4-31b-it:free', claudeModel: 'claude-sonnet-5-5' } });
+    expect(find(a, 'ask')?.children?.map((c) => c.id)).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-anthropic', 'ask-key', 'ask-remove', 'ask-claude-haiku', 'ask-claude-sonnet']);
+    expect(find(a, 'ask-provider-anthropic')?.checked).toBe(true);
+    expect(find(a, 'ask-provider-openrouter')?.checked).toBe(false);
+    expect(find(a, 'ask-key')?.label).toBe('Set Claude API key…');
+    expect(find(a, 'ask-claude-sonnet')?.checked).toBe(true);
+    expect(find(a, 'ask-claude-haiku')?.checked).toBe(false);
+    expect(find(a, 'ask-model-free')).toBeUndefined();
   });
 
   it('"Check for updates…" lives inside the Presence submenu, not as a new top-level row', () => {

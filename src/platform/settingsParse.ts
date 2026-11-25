@@ -6,8 +6,8 @@ import type { StretchConfig } from '../agent/stretch';
 import type { FocusSaved } from '../agent/focus';
 import { DEFAULT_STYLE, normalizeStyle } from '../art/style';
 import type { Style } from '../art/style';
-import { DEFAULT_ASK_MODEL, normalizeAskModel } from '../agent/ask';
-import type { AskModel } from '../agent/ask';
+import { DEFAULT_ASK_MODEL, DEFAULT_ASK_PROVIDER, DEFAULT_CLAUDE_MODEL, normalizeAskModel, normalizeAskProvider, normalizeClaudeModel } from '../agent/ask';
+import type { AskModel, AskProvider, ClaudeModel } from '../agent/ask';
 import { DEFAULT_OUTFIT_SETTING, normalizeOutfitSetting } from '../art/outfits';
 import type { OutfitSetting } from '../art/outfits';
 import { DEFAULT_UPDATE_STATE, parseUpdateState } from '../agent/updates';
@@ -34,15 +34,17 @@ export interface Settings {
   stretch: StretchConfig; // stretch-break nudges (default on, every 60 active minutes)
   focus: FocusSaved | null; // a running focus session's end timestamp (survives sleep and restarts)
   outfits: OutfitSetting; // seasonal outfits: 'auto' dresses for the date (default), 'off' never
-  askModel: AskModel; // Ask Paperclip: 'claude-haiku-5-5' (default, fast) or 'claude-sonnet-5-5'. The API key itself is NOT a setting: it lives in the OS keychain.
-  askIntroSeen: boolean; // the one-time "only what you type is sent to Claude" line has been shown
+  askProvider: AskProvider; // Ask Paperclip: 'openrouter' (default, also for existing users) or 'anthropic' (optional, needs a Claude API key)
+  askClaudeModel: ClaudeModel; // the Anthropic provider's model: 'claude-haiku-5-5' (default) or 'claude-sonnet-5-5'. Old stored `askModel: 'claude-*'` values land here.
+  askModel: AskModel; // Ask Paperclip: an OpenRouter model id (default free 'google/gemma-4-31b-it:free'). The API key itself is NOT a setting: it lives in the OS keychain.
+  askIntroSeen: boolean; // the one-time "only what you type is sent to the provider" line has been shown
   updates: UpdateState; // daily silent update check: when it last ran and the newest version he already mentioned
   meetingHeadsUp: boolean; // macOS: say something 5 min before a calendar event (default off, asks for access when turned on)
 }
 
 export const DEFAULT_WATER: WaterSettings = { enabled: true, intervalMin: DEFAULT_INTERVAL, lastReminderAt: null, glasses: 0, glassesDate: '' };
 
-export const DEFAULTS: Settings = { quiet: false, scheduler: {}, position: null, hidden: false, style: DEFAULT_STYLE, water: DEFAULT_WATER, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, stretch: { enabled: true, everyMin: DEFAULT_STRETCH_MIN }, focus: null, meetingHeadsUp: false, outfits: DEFAULT_OUTFIT_SETTING, askModel: DEFAULT_ASK_MODEL, askIntroSeen: false, updates: DEFAULT_UPDATE_STATE };
+export const DEFAULTS: Settings = { quiet: false, scheduler: {}, position: null, hidden: false, style: DEFAULT_STYLE, water: DEFAULT_WATER, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, stretch: { enabled: true, everyMin: DEFAULT_STRETCH_MIN }, focus: null, meetingHeadsUp: false, outfits: DEFAULT_OUTFIT_SETTING, askProvider: DEFAULT_ASK_PROVIDER, askClaudeModel: DEFAULT_CLAUDE_MODEL, askModel: DEFAULT_ASK_MODEL, askIntroSeen: false, updates: DEFAULT_UPDATE_STATE };
 
 /** Validate raw persisted values (anything can be in the store file) into a Settings object. */
 export function parseSettings(raw: Record<string, unknown>): Settings {
@@ -66,6 +68,9 @@ export function parseSettings(raw: Record<string, unknown>): Settings {
     focus: parseFocus(raw.focus),
     meetingHeadsUp: raw.meetingHeadsUp === true,
     outfits: normalizeOutfitSetting(raw.outfits),
+    askProvider: normalizeAskProvider(raw.askProvider),
+    // Before providers existed `askModel` held the Claude id; it stays the Claude choice, the OpenRouter model starts at the free default.
+    askClaudeModel: normalizeClaudeModel(raw.askClaudeModel ?? raw.askModel),
     askModel: normalizeAskModel(raw.askModel),
     askIntroSeen: raw.askIntroSeen === true,
     updates: parseUpdateState(raw.updates),

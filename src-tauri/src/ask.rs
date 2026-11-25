@@ -1,6 +1,7 @@
-//! Ask Paperclip: one short question to Claude, answered in the balloon.
+//! Ask Paperclip: one short question to a model on OpenRouter (default) or to Claude via the Anthropic API,
+//! answered in the balloon.
 //!
-//! Security shape (same idea as `files.rs`): the API key lives ONLY in the OS keychain and is read here, in Rust,
+//! Security shape (same idea as `files.rs`): each provider's API key lives ONLY in the OS keychain (one account per provider) and is read here, in Rust,
 //! at the moment of a request. JS can set it, remove it and ask whether one exists; it can never read it back.
 //! The HTTP call happens here too, so the key never touches the webview and the CSP stays unchanged.
 //! Only the typed question and the in-memory history (sent by JS) go over the wire: no screen, clipboard or files.
@@ -11,26 +12,71 @@ use serde_json::{json, Value};
 use std::time::Duration;
 
 const KEYCHAIN_SERVICE: &str = "app.paperclip.desktop";
-const KEYCHAIN_ACCOUNT: &str = "anthropic-api-key";
-const API_URL: &str = "https://api.anthropic.com/v1/messages";
-const API_VERSION: &str = "2023-06-01";
+const OPENROUTER_ACCOUNT: &str = "openrouter-api-key";
+const ANTHROPIC_ACCOUNT: &str = "anthropic-api-key";
+const API_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
+const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// Server-side refusal fallback (Sonnet 5.5 supports the `"default"` form; Haiku 5.5 has no server-side fallback).
 const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
 const HAIKU: &str = "claude-haiku-5-5";
 const SONNET: &str = "claude-sonnet-5-5";
-const MAX_TOKENS: u32 = 200;
+const ANTHROPIC_MAX_TOKENS: u32 = 200;
+const REFERER: &str = "https://github.com/annuai/paperclip";
+const APP_TITLE: &str = "Paperclip";
+/// The free default, and the free router OpenRouter falls back to when it is busy.
+const DEFAULT_MODEL: &str = "google/gemma-4-31b-it:free";
+const FREE_ROUTER: &str = "openrouter/free";
+const MAX_MODEL_ID_LEN: usize = 100;
+const MAX_TOKENS: u32 = 300;
 const TIMEOUT: Duration = Duration::from_secs(20);
 /// Six exchanges (a question and its answer) of context at most.
 const MAX_HISTORY_MESSAGES: usize = 12;
 const MAX_TURN_CHARS: usize = 600;
 /// Keep the balloon small: answers are cut to about this many characters.
 const MAX_ANSWER_CHARS: usize = 220;
-const MAX_KEY_LEN: usize = 512;
+const MAX_KEY_LEN_OPENROUTER: usize = 400;
+const MAX_KEY_LEN_ANTHROPIC: usize = 512;
 
 const SYSTEM_PROMPT: &str = "You are Paperclip, a cheerful, slightly dorky paperclip who lives on the user's desktop. \
 Answer in 1 to 3 short sentences, under 220 characters in total, because your speech balloon is tiny. \
 Use plain text only: no markdown, no lists, no code blocks, no emoji. \
 Be warm and a little playful, but get the answer right. If a question needs a long answer, give the key point and say you are keeping it short.";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Provider {
+    OpenRouter,
+    Anthropic,
+}
+
+impl Provider {
+    /// Anything but "anthropic" is OpenRouter (the default).
+    fn parse(s: Option<&str>) -> Self {
+        if s == Some("anthropic") {
+            Provider::Anthropic
+        } else {
+            Provider::OpenRouter
+        }
+    }
+    fn account(self) -> &'static str {
+        match self {
+            Provider::OpenRouter => OPENROUTER_ACCOUNT,
+            Provider::Anthropic => ANTHROPIC_ACCOUNT,
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            Provider::OpenRouter => "OpenRouter",
+            Provider::Anthropic => "Claude",
+        }
+    }
+    fn max_key_len(self) -> usize {
+        match self {
+            Provider::OpenRouter => MAX_KEY_LEN_OPENROUTER,
+            Provider::Anthropic => MAX_KEY_LEN_ANTHROPIC,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Turn {
@@ -43,6 +89,8 @@ pub struct Turn {
 pub enum FailureKind {
     NoKey,
     Unauthorized,
+    OutOfCredits,
+    BadModel,
     RateLimited,
     Overloaded,
     Offline,
@@ -63,20 +111,39 @@ fn failure(kind: FailureKind, message: &str) -> AskFailure {
     AskFailure { kind, message: message.to_string() }
 }
 
-fn no_key() -> AskFailure {
-    failure(FailureKind::NoKey, "I need a Claude API key before I can answer questions. Want to add one?")
+fn no_key(provider: Provider) -> AskFailure {
+    failure(FailureKind::NoKey, &format!("I need a {} API key before I can answer questions. Want to add one?", provider.name()))
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Request building (pure)
 // ---------------------------------------------------------------------------------------------------------------
 
-/// Only the two supported models are ever sent, whatever JS says.
-fn resolve_model(requested: Option<&str>) -> &'static str {
+/// `vendor/model-name`: `^[A-Za-z0-9._~-]+/[A-Za-z0-9._:~-]+$`, at most 100 characters.
+pub fn valid_model_id(id: &str) -> bool {
+    if id.is_empty() || id.len() > MAX_MODEL_ID_LEN {
+        return false;
+    }
+    let Some((vendor, name)) = id.split_once('/') else { return false };
+    let vendor_ok = !vendor.is_empty() && vendor.bytes().all(|b| b.is_ascii_alphanumeric() || b"._~-".contains(&b));
+    let name_ok = !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b"._:~-".contains(&b));
+    vendor_ok && name_ok
+}
+
+/// The two Claude models of the Anthropic path; anything else becomes Haiku.
+fn resolve_claude_model(requested: Option<&str>) -> &'static str {
     if requested == Some(SONNET) {
         SONNET
     } else {
         HAIKU
+    }
+}
+
+/// Any well-formed OpenRouter model id is sent as is; anything else falls back to the default.
+fn resolve_model(requested: Option<&str>) -> &str {
+    match requested {
+        Some(m) if valid_model_id(m) => m,
+        _ => DEFAULT_MODEL,
     }
 }
 
@@ -112,17 +179,40 @@ fn build_messages(history: &[Turn], question: &str) -> Vec<Value> {
     msgs.into_iter().map(|(r, t)| json!({ "role": r, "content": t })).collect()
 }
 
-/// The JSON body, and whether the request needs the server-side-fallback beta header.
+/// The OpenAI-style JSON body. The system prompt is the first message.
+///
+/// Reasoning is switched off with `"reasoning": { "effort": "none" }` (OpenRouter's documented "disables reasoning
+/// entirely"), so the 300 output tokens are all answer. No sampling parameters.
+///
+/// Only the free default carries a fallback list: `models` goes next to `model`, so a busy free model falls back
+/// to OpenRouter's free router instead of failing. Paid and custom models never get a fallback (no surprise bills).
+pub fn build_openrouter_request(model: Option<&str>, history: &[Turn], question: &str) -> Value {
+    let mut messages = vec![json!({ "role": "system", "content": SYSTEM_PROMPT })];
+    messages.extend(build_messages(history, question));
+    let model = resolve_model(model);
+    let mut body = json!({
+        "model": model,
+        "messages": messages,
+        "max_tokens": MAX_TOKENS,
+        "reasoning": { "effort": "none" },
+    });
+    if model == DEFAULT_MODEL {
+        body["models"] = json!([DEFAULT_MODEL, FREE_ROUTER]);
+    }
+    body
+}
+
+/// The Anthropic Messages API body, and whether the request needs the server-side-fallback beta header.
 ///
 /// Thinking is switched off and effort is low so the 200 output tokens are all answer: Haiku 5.5 takes
 /// `disabled`, Sonnet 5.5 rejects it and takes `between_tools` (no tools are sent, so it never thinks).
 /// No sampling parameters (they are rejected on these models) and no assistant prefill.
-pub fn build_request(model: Option<&str>, history: &[Turn], question: &str) -> (Value, bool) {
-    let model = resolve_model(model);
+pub fn build_anthropic_request(model: Option<&str>, history: &[Turn], question: &str) -> (Value, bool) {
+    let model = resolve_claude_model(model);
     let sonnet = model == SONNET;
     let mut body = json!({
         "model": model,
-        "max_tokens": MAX_TOKENS,
+        "max_tokens": ANTHROPIC_MAX_TOKENS,
         "system": SYSTEM_PROMPT,
         "messages": build_messages(history, question),
         "thinking": { "type": if sonnet { "between_tools" } else { "disabled" } },
@@ -220,7 +310,29 @@ fn shorten(text: &str, max: usize) -> String {
     format!("{}…", cut.trim_end_matches([',', ';', ':', '-', ' ']))
 }
 
-fn http_failure(status: u16) -> AskFailure {
+fn is_free(model: &str) -> bool {
+    model.ends_with(":free") || model == FREE_ROUTER
+}
+
+fn http_failure(status: u16, model: &str) -> AskFailure {
+    match status {
+        401 => failure(FailureKind::Unauthorized, "OpenRouter didn't accept my API key. It may be mistyped or revoked. Want to enter it again?"),
+        402 => failure(FailureKind::OutOfCredits, "Your OpenRouter account is out of credits. Top it up at openrouter.ai, then ask me again."),
+        403 => failure(FailureKind::Refused, "OpenRouter flagged that question and wouldn't pass it on. Try asking me something else?"),
+        408 => failure(FailureKind::Timeout, "OpenRouter took too long to answer, so I gave up waiting. Try again?"),
+        429 if is_free(model) => failure(FailureKind::RateLimited, "The free model is getting a lot of questions right now. Try again in a bit, or pick another model."),
+        429 => failure(FailureKind::RateLimited, "Whoa, I've asked OpenRouter a lot of questions very quickly. Give it a minute, then ask me again."),
+        502 | 503 => failure(FailureKind::Overloaded, "That model is busy or unavailable right now, try again or pick another."),
+        400 | 404 => failure(FailureKind::BadModel, "OpenRouter doesn't know that model, or won't take my question. Check the model in the menu."),
+        500..=599 => failure(FailureKind::Overloaded, "OpenRouter is a bit overwhelmed right now. Ask me again in a moment."),
+        _ => AskFailure {
+            kind: FailureKind::Other,
+            message: format!("Something went wrong when I asked OpenRouter (error {status}). Try again later."),
+        },
+    }
+}
+
+fn anthropic_http_failure(status: u16) -> AskFailure {
     match status {
         401 | 403 => failure(FailureKind::Unauthorized, "Claude didn't accept my API key. It may be mistyped or revoked. Want to enter it again?"),
         429 => failure(FailureKind::RateLimited, "Whoa, I've asked Claude a lot of questions very quickly. Give it a minute, then ask me again."),
@@ -232,10 +344,10 @@ fn http_failure(status: u16) -> AskFailure {
     }
 }
 
-/// Maps an HTTP status and body to a tidy answer or a friendly failure.
-pub fn parse_response(status: u16, body: &str) -> Result<String, AskFailure> {
+/// Maps an Anthropic HTTP status and body to a tidy answer or a friendly failure.
+pub fn parse_anthropic(status: u16, body: &str) -> Result<String, AskFailure> {
     if !(200..300).contains(&status) {
-        return Err(http_failure(status));
+        return Err(anthropic_http_failure(status));
     }
     let v: Value = serde_json::from_str(body)
         .map_err(|_| failure(FailureKind::Other, "Claude sent me something I couldn't read. Try again?"))?;
@@ -261,13 +373,55 @@ pub fn parse_response(status: u16, body: &str) -> Result<String, AskFailure> {
     Ok(answer)
 }
 
-fn transport_failure(e: &reqwest::Error) -> AskFailure {
+/// `message.content` is a string, or (some providers) an array of `{ "type": "text", "text": ... }` parts.
+fn content_text(content: &Value) -> String {
+    match content {
+        Value::String(s) => s.clone(),
+        Value::Array(parts) => parts
+            .iter()
+            .filter(|p| p.get("type").and_then(Value::as_str).is_none_or(|t| t == "text"))
+            .filter_map(|p| p.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join(" "),
+        _ => String::new(),
+    }
+}
+
+/// Maps an HTTP status and body to a tidy answer or a friendly failure. The body is never echoed.
+pub fn parse_openrouter(status: u16, body: &str, model: &str) -> Result<String, AskFailure> {
+    if !(200..300).contains(&status) {
+        return Err(http_failure(status, model));
+    }
+    let v: Value = serde_json::from_str(body)
+        .map_err(|_| failure(FailureKind::Other, "OpenRouter sent me something I couldn't read. Try again?"))?;
+    let choice = v.get("choices").and_then(Value::as_array).and_then(|c| c.first());
+    // OpenRouter can answer 200 with an `error` object (e.g. the provider failed): use its numeric code.
+    if choice.is_none() {
+        let code = v.get("error").and_then(|e| e.get("code")).and_then(Value::as_u64).and_then(|c| u16::try_from(c).ok());
+        if let Some(code) = code.filter(|c| !(200..300).contains(c)) {
+            return Err(http_failure(code, model));
+        }
+    }
+    let text = choice
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .map(content_text)
+        .unwrap_or_default();
+    let answer = tidy_answer(&text);
+    if answer.is_empty() {
+        return Err(failure(FailureKind::Empty, "OpenRouter sent back a blank reply. Try asking a different way?"));
+    }
+    Ok(answer)
+}
+
+fn transport_failure(provider: Provider, e: &reqwest::Error) -> AskFailure {
+    let name = provider.name();
     if e.is_timeout() {
-        failure(FailureKind::Timeout, "Claude took too long to answer, so I gave up waiting. Try again?")
+        failure(FailureKind::Timeout, &format!("{name} took too long to answer, so I gave up waiting. Try again?"))
     } else if e.is_connect() {
-        failure(FailureKind::Offline, "It looks like you're offline. I can't reach Claude from here.")
+        failure(FailureKind::Offline, &format!("It looks like you're offline. I can't reach {name} from here."))
     } else {
-        failure(FailureKind::Other, "Something went wrong reaching Claude. Try again later.")
+        failure(FailureKind::Other, &format!("Something went wrong reaching {name}. Try again later."))
     }
 }
 
@@ -275,46 +429,71 @@ fn transport_failure(e: &reqwest::Error) -> AskFailure {
 // HTTP
 // ---------------------------------------------------------------------------------------------------------------
 
-async fn send(url: &str, key: &str, body: &Value, fallback_beta: bool) -> Result<String, AskFailure> {
-    let mut key_header = reqwest::header::HeaderValue::from_str(key)
-        .map_err(|_| failure(FailureKind::Unauthorized, "The stored API key looks damaged. Want to enter it again?"))?;
-    key_header.set_sensitive(true); // never shown by Debug
-    let client = reqwest::Client::builder()
+fn build_client(provider: Provider) -> Result<reqwest::Client, AskFailure> {
+    reqwest::Client::builder()
         .timeout(TIMEOUT)
         .build()
-        .map_err(|_| failure(FailureKind::Other, "Something went wrong reaching Claude. Try again later."))?;
-    let mut req = client
+        .map_err(|_| failure(FailureKind::Other, &format!("Something went wrong reaching {}. Try again later.", provider.name())))
+}
+
+fn damaged_key() -> AskFailure {
+    failure(FailureKind::Unauthorized, "The stored API key looks damaged. Want to enter it again?")
+}
+
+async fn send_openrouter(url: &str, key: &str, body: &Value) -> Result<String, AskFailure> {
+    let mut auth = reqwest::header::HeaderValue::from_str(&format!("Bearer {key}")).map_err(|_| damaged_key())?;
+    auth.set_sensitive(true); // never shown by Debug
+    let resp = build_client(Provider::OpenRouter)?
+        .post(url)
+        .header(reqwest::header::AUTHORIZATION, auth)
+        .header("HTTP-Referer", REFERER)
+        .header("X-Title", APP_TITLE)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| transport_failure(Provider::OpenRouter, &e))?;
+    let status = resp.status().as_u16();
+    let text = resp.text().await.map_err(|e| transport_failure(Provider::OpenRouter, &e))?;
+    parse_openrouter(status, &text, body["model"].as_str().unwrap_or(DEFAULT_MODEL))
+}
+
+async fn send_anthropic(url: &str, key: &str, body: &Value, fallback_beta: bool) -> Result<String, AskFailure> {
+    let mut key_header = reqwest::header::HeaderValue::from_str(key).map_err(|_| damaged_key())?;
+    key_header.set_sensitive(true); // never shown by Debug
+    let mut req = build_client(Provider::Anthropic)?
         .post(url)
         .header("x-api-key", key_header)
-        .header("anthropic-version", API_VERSION)
+        .header("anthropic-version", ANTHROPIC_VERSION)
         .json(body);
     if fallback_beta {
         req = req.header("anthropic-beta", FALLBACK_BETA);
     }
-    let resp = req.send().await.map_err(|e| transport_failure(&e))?;
+    let resp = req.send().await.map_err(|e| transport_failure(Provider::Anthropic, &e))?;
     let status = resp.status().as_u16();
-    let text = resp.text().await.map_err(|e| transport_failure(&e))?;
-    parse_response(status, &text)
+    let text = resp.text().await.map_err(|e| transport_failure(Provider::Anthropic, &e))?;
+    parse_anthropic(status, &text)
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Keychain
+// Keychain (one account per provider; the active provider's key is the one set, removed and checked)
 // ---------------------------------------------------------------------------------------------------------------
 
-fn entry() -> keyring::Result<keyring::Entry> {
-    keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+fn entry(provider: Provider) -> keyring::Result<keyring::Entry> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, provider.account())
 }
 
-fn read_key() -> Option<String> {
-    entry().ok()?.get_password().ok().filter(|k| !k.is_empty())
+fn read_key(provider: Provider) -> Option<String> {
+    entry(provider).ok()?.get_password().ok().filter(|k| !k.is_empty())
 }
 
-fn validate_key(raw: &str) -> Result<String, &'static str> {
+/// Trimmed, non-empty, no whitespace or control characters, bounded. Any prefix is accepted (an OpenRouter key
+/// normally starts with `sk-or-`, but nothing relies on it).
+fn validate_key(provider: Provider, raw: &str) -> Result<String, &'static str> {
     let key = raw.trim();
     if key.is_empty() {
         return Err("That key is empty.");
     }
-    if key.len() > MAX_KEY_LEN || !key.bytes().all(|b| b.is_ascii_graphic()) {
+    if key.len() > provider.max_key_len() || !key.bytes().all(|b| b.is_ascii_graphic()) {
         return Err("That doesn't look like an API key.");
     }
     Ok(key.to_string())
@@ -324,24 +503,27 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
     tauri::async_runtime::spawn_blocking(f).await.ok()
 }
 
-/// True when a key is stored. The key itself is never returned.
+/// True when the provider has a key stored. The key itself is never returned.
 #[tauri::command]
-pub async fn ask_key_status() -> bool {
-    blocking(|| read_key().is_some()).await.unwrap_or(false)
+pub async fn ask_key_status(provider: Option<String>) -> bool {
+    let p = Provider::parse(provider.as_deref());
+    blocking(move || read_key(p).is_some()).await.unwrap_or(false)
 }
 
 #[tauri::command]
-pub async fn ask_set_key(key: String) -> Result<(), String> {
-    let key = validate_key(&key).map_err(str::to_string)?;
-    blocking(move || entry().and_then(|e| e.set_password(&key)))
+pub async fn ask_set_key(key: String, provider: Option<String>) -> Result<(), String> {
+    let p = Provider::parse(provider.as_deref());
+    let key = validate_key(p, &key).map_err(str::to_string)?;
+    blocking(move || entry(p).and_then(|e| e.set_password(&key)))
         .await
         .ok_or_else(|| "The keychain didn't answer.".to_string())?
         .map_err(|_| "I couldn't save the key to your keychain.".to_string())
 }
 
 #[tauri::command]
-pub async fn ask_remove_key() -> Result<(), String> {
-    let res = blocking(|| entry().and_then(|e| e.delete_credential()))
+pub async fn ask_remove_key(provider: Option<String>) -> Result<(), String> {
+    let p = Provider::parse(provider.as_deref());
+    let res = blocking(move || entry(p).and_then(|e| e.delete_credential()))
         .await
         .ok_or_else(|| "The keychain didn't answer.".to_string())?;
     match res {
@@ -350,16 +532,26 @@ pub async fn ask_remove_key() -> Result<(), String> {
     }
 }
 
-/// Sends one question (plus the in-memory history JS holds) to Claude and returns the tidy answer.
+/// Sends one question (plus the in-memory history JS holds) to the active provider and returns the tidy answer.
+/// `model` is an OpenRouter model id, or one of the two Claude ids when the provider is Anthropic.
 #[tauri::command]
-pub async fn ask(question: String, history: Vec<Turn>, model: Option<String>) -> Result<String, AskFailure> {
+pub async fn ask(question: String, history: Vec<Turn>, model: Option<String>, provider: Option<String>) -> Result<String, AskFailure> {
     let question = question.trim().to_string();
     if question.is_empty() {
         return Err(failure(FailureKind::Empty, "I didn't catch a question. What would you like to know?"));
     }
-    let key = blocking(read_key).await.flatten().ok_or_else(no_key)?;
-    let (body, beta) = build_request(model.as_deref(), &history, &question);
-    send(API_URL, &key, &body, beta).await
+    let p = Provider::parse(provider.as_deref());
+    let key = blocking(move || read_key(p)).await.flatten().ok_or_else(|| no_key(p))?;
+    match p {
+        Provider::OpenRouter => {
+            let body = build_openrouter_request(model.as_deref(), &history, &question);
+            send_openrouter(API_URL, &key, &body).await
+        }
+        Provider::Anthropic => {
+            let (body, beta) = build_anthropic_request(model.as_deref(), &history, &question);
+            send_anthropic(ANTHROPIC_URL, &key, &body, beta).await
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -408,6 +600,17 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
 
+    // OpenRouter is the default provider: the shorter names below mean its path in these tests.
+    fn build_request(model: Option<&str>, history: &[Turn], question: &str) -> Value {
+        build_openrouter_request(model, history, question)
+    }
+    fn parse_response(status: u16, body: &str) -> Result<String, AskFailure> {
+        parse_openrouter(status, body, "vendor/model")
+    }
+    async fn send(url: &str, key: &str, body: &Value) -> Result<String, AskFailure> {
+        send_openrouter(url, key, body).await
+    }
+
     fn turn(role: &str, text: &str) -> Turn {
         Turn { role: role.to_string(), text: text.to_string() }
     }
@@ -415,35 +618,45 @@ mod tests {
     // ---- request ----
 
     #[test]
-    fn request_shape_for_haiku_by_default() {
-        let (body, beta) = build_request(None, &[], "What is Rust?");
-        assert!(!beta);
-        assert_eq!(body["model"], "claude-haiku-5-5");
-        assert_eq!(body["max_tokens"], 200);
-        assert_eq!(body["thinking"]["type"], "disabled");
-        assert_eq!(body["output_config"]["effort"], "low");
-        assert!(body.get("fallbacks").is_none());
-        assert!(body.get("temperature").is_none() && body.get("top_p").is_none() && body.get("top_k").is_none());
-        assert_eq!(body["messages"], json!([{ "role": "user", "content": "What is Rust?" }]));
-        let system = body["system"].as_str().unwrap();
+    fn request_shape_defaults_to_the_free_model_with_reasoning_off() {
+        let body = build_request(None, &[], "What is Rust?");
+        assert_eq!(body["model"], "google/gemma-4-31b-it:free");
+        assert_eq!(body["max_tokens"], 300);
+        assert_eq!(body["reasoning"], json!({ "effort": "none" }));
+        for k in ["temperature", "top_p", "top_k", "system", "thinking", "stream"] {
+            assert!(body.get(k).is_none(), "{k}");
+        }
+        let msgs = body["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0]["role"], "system");
+        let system = msgs[0]["content"].as_str().unwrap();
         assert!(system.contains("Paperclip") && system.contains("1 to 3 short sentences") && system.contains("no markdown"));
+        assert_eq!(msgs[1], json!({ "role": "user", "content": "What is Rust?" }));
     }
 
     #[test]
-    fn request_shape_for_sonnet_uses_between_tools_and_fallback() {
-        let (body, beta) = build_request(Some("claude-sonnet-5-5"), &[], "Hi");
-        assert!(beta);
-        assert_eq!(body["model"], "claude-sonnet-5-5");
-        assert_eq!(body["thinking"], json!({ "type": "between_tools" }));
-        assert_eq!(body["fallbacks"], "default");
+    fn any_valid_model_id_is_sent_as_is() {
+        for id in ["anthropic/claude-sonnet-5.5", "openai/gpt-5-mini", "meta-llama/llama-3.3-70b-instruct:free", "x~y/z_1"] {
+            assert_eq!(build_request(Some(id), &[], "Hi")["model"], id);
+        }
     }
 
     #[test]
-    fn unknown_models_fall_back_to_haiku() {
-        let (body, _) = build_request(Some("claude-opus-5-5"), &[], "Hi");
-        assert_eq!(body["model"], "claude-haiku-5-5");
-        let (body, _) = build_request(Some("../../evil"), &[], "Hi");
-        assert_eq!(body["model"], "claude-haiku-5-5");
+    fn invalid_model_ids_fall_back_to_the_default() {
+        for id in ["", "gpt", "a/b/c", "a b/c", "a/b c", "/b", "a/", "evil\"/x", "a/b\nc", "a/ü"] {
+            assert_eq!(build_request(Some(id), &[], "Hi")["model"], DEFAULT_MODEL, "{id:?}");
+        }
+        assert_eq!(build_request(Some(&format!("a/{}", "b".repeat(99))), &[], "Hi")["model"], DEFAULT_MODEL);
+    }
+
+    #[test]
+    fn model_id_validation() {
+        assert!(valid_model_id("anthropic/claude-haiku-5.5"));
+        assert!(valid_model_id("a/b:free"));
+        assert!(valid_model_id(&format!("a/{}", "b".repeat(98)))); // exactly 100
+        assert!(!valid_model_id(&format!("a/{}", "b".repeat(99)))); // 101
+        assert!(!valid_model_id("a:b/c")); // ':' is only allowed after the slash
+        assert!(!valid_model_id("nothing"));
     }
 
     #[test]
@@ -476,7 +689,7 @@ mod tests {
     // ---- response ----
 
     fn ok_body(text: &str) -> String {
-        json!({ "stop_reason": "end_turn", "content": [{ "type": "text", "text": text }] }).to_string()
+        json!({ "choices": [{ "finish_reason": "stop", "message": { "role": "assistant", "content": text } }] }).to_string()
     }
 
     #[test]
@@ -485,48 +698,81 @@ mod tests {
     }
 
     #[test]
-    fn joins_text_blocks_and_ignores_others() {
-        let body = json!({ "stop_reason": "end_turn", "content": [
-            { "type": "thinking", "thinking": "" },
-            { "type": "text", "text": "One." }, { "type": "text", "text": "Two." } ] })
+    fn parses_array_content_parts() {
+        let body = json!({ "choices": [{ "message": { "content": [
+            { "type": "text", "text": "One." }, { "type": "image_url", "image_url": {} }, { "type": "text", "text": "Two." } ] } }] })
         .to_string();
         assert_eq!(parse_response(200, &body).unwrap(), "One. Two.");
     }
 
     #[test]
-    fn refusal_and_empty_replies_are_friendly_errors() {
-        let refusal = json!({ "stop_reason": "refusal", "content": [] }).to_string();
-        assert_eq!(parse_response(200, &refusal).unwrap_err().kind, FailureKind::Refused);
+    fn reasoning_text_is_never_shown() {
+        let body = json!({ "choices": [{ "message": { "content": "Answer.", "reasoning": "secret thoughts" } }] }).to_string();
+        assert_eq!(parse_response(200, &body).unwrap(), "Answer.");
+    }
+
+    #[test]
+    fn empty_and_unreadable_replies_are_friendly_errors() {
         assert_eq!(parse_response(200, &ok_body("   ")).unwrap_err().kind, FailureKind::Empty);
-        assert_eq!(parse_response(200, "{\"content\":[]}").unwrap_err().kind, FailureKind::Empty);
+        assert_eq!(parse_response(200, "{\"choices\":[]}").unwrap_err().kind, FailureKind::Empty);
+        assert_eq!(parse_response(200, "{\"choices\":[{\"message\":{\"content\":null}}]}").unwrap_err().kind, FailureKind::Empty);
+        assert_eq!(parse_response(200, "{\"choices\":[{\"message\":{\"content\":[]}}]}").unwrap_err().kind, FailureKind::Empty);
         assert_eq!(parse_response(200, "not json").unwrap_err().kind, FailureKind::Other);
+    }
+
+    #[test]
+    fn a_200_carrying_an_error_object_uses_its_code() {
+        let e = parse_response(200, "{\"error\":{\"code\":402,\"message\":\"x\"}}").unwrap_err();
+        assert_eq!(e.kind, FailureKind::OutOfCredits);
+        let e = parse_response(200, "{\"error\":{\"code\":502,\"message\":\"x\"}}").unwrap_err();
+        assert_eq!(e.kind, FailureKind::Overloaded);
     }
 
     #[test]
     fn http_statuses_map_to_friendly_kinds() {
         let kind = |s| parse_response(s, "{}").unwrap_err().kind;
         assert_eq!(kind(401), FailureKind::Unauthorized);
-        assert_eq!(kind(403), FailureKind::Unauthorized);
+        assert_eq!(kind(402), FailureKind::OutOfCredits);
+        assert_eq!(kind(403), FailureKind::Refused);
+        assert_eq!(kind(408), FailureKind::Timeout);
         assert_eq!(kind(429), FailureKind::RateLimited);
-        assert_eq!(kind(529), FailureKind::Overloaded);
-        assert_eq!(kind(500), FailureKind::Overloaded);
+        assert_eq!(kind(502), FailureKind::Overloaded);
         assert_eq!(kind(503), FailureKind::Overloaded);
-        assert_eq!(kind(400), FailureKind::Other);
-        assert!(parse_response(400, "{}").unwrap_err().message.contains("400"));
+        assert_eq!(kind(500), FailureKind::Overloaded);
+        assert_eq!(kind(529), FailureKind::Overloaded);
+        assert_eq!(kind(400), FailureKind::BadModel);
+        assert_eq!(kind(404), FailureKind::BadModel);
+        assert_eq!(kind(418), FailureKind::Other);
+        assert!(parse_response(418, "{}").unwrap_err().message.contains("418"));
+    }
+
+    #[test]
+    fn failure_messages_mention_openrouter_and_never_the_old_provider() {
+        for s in [401, 402, 403, 408, 429, 502, 400, 500, 418] {
+            let m = parse_response(s, "{}").unwrap_err().message;
+            assert!(!m.contains("Claude") && !m.contains("Anthropic"), "{s}: {m}");
+        }
+        assert!(parse_response(402, "{}").unwrap_err().message.starts_with("Your OpenRouter account is out of credits"));
+        assert!(parse_response(400, "{}").unwrap_err().message.starts_with("OpenRouter doesn't know that model"));
+        assert!(parse_response(503, "{}").unwrap_err().message.starts_with("That model is busy or unavailable right now, try again or pick another"));
     }
 
     #[test]
     fn failure_messages_never_echo_the_response_body() {
-        let e = parse_response(401, "{\"error\":{\"message\":\"invalid x-api-key sk-ant-SECRET\"}}").unwrap_err();
-        assert!(!e.message.contains("SECRET"));
+        for s in [400, 401, 402, 403, 429, 502] {
+            let e = parse_response(s, "{\"error\":{\"message\":\"bad key sk-or-v1-SECRET\"}}").unwrap_err();
+            assert!(!e.message.contains("SECRET"));
+        }
     }
 
     #[test]
     fn failures_serialize_with_camel_case_kinds() {
-        let v = serde_json::to_value(no_key()).unwrap();
+        let v = serde_json::to_value(no_key(Provider::OpenRouter)).unwrap();
         assert_eq!(v["kind"], "noKey");
-        assert!(v["message"].as_str().unwrap().contains("API key"));
+        assert!(v["message"].as_str().unwrap().contains("OpenRouter API key"));
         assert_eq!(serde_json::to_value(FailureKind::RateLimited).unwrap(), "rateLimited");
+        assert_eq!(serde_json::to_value(FailureKind::OutOfCredits).unwrap(), "outOfCredits");
+        assert_eq!(serde_json::to_value(FailureKind::BadModel).unwrap(), "badModel");
     }
 
     // ---- markdown stripping ----
@@ -567,18 +813,145 @@ mod tests {
 
     #[test]
     fn key_validation() {
-        assert_eq!(validate_key("  sk-ant-abc123  ").unwrap(), "sk-ant-abc123");
-        assert!(validate_key("   ").is_err());
-        assert!(validate_key("sk ant").is_err());
-        assert!(validate_key("sk-ant\nabc").is_err());
-        assert!(validate_key(&"k".repeat(600)).is_err());
+        use Provider::{Anthropic, OpenRouter};
+        assert_eq!(validate_key(OpenRouter, "  sk-or-v1-abc123  ").unwrap(), "sk-or-v1-abc123");
+        assert_eq!(validate_key(OpenRouter, "not-an-openrouter-prefix").unwrap(), "not-an-openrouter-prefix"); // still accepted
+        assert_eq!(validate_key(Anthropic, "  sk-ant-abc123  ").unwrap(), "sk-ant-abc123");
+        for p in [OpenRouter, Anthropic] {
+            assert!(validate_key(p, "   ").is_err());
+            assert!(validate_key(p, "sk or").is_err());
+            assert!(validate_key(p, "sk-or\nabc").is_err());
+        }
+        assert!(validate_key(OpenRouter, &"k".repeat(400)).is_ok());
+        assert!(validate_key(OpenRouter, &"k".repeat(401)).is_err());
+        assert!(validate_key(Anthropic, &"k".repeat(512)).is_ok());
+        assert!(validate_key(Anthropic, &"k".repeat(513)).is_err());
+    }
+
+    #[test]
+    fn providers_have_separate_keychain_accounts_and_default_to_openrouter() {
+        assert_eq!(Provider::parse(None), Provider::OpenRouter);
+        assert_eq!(Provider::parse(Some("nonsense")), Provider::OpenRouter);
+        assert_eq!(Provider::parse(Some("anthropic")), Provider::Anthropic);
+        assert_eq!(Provider::OpenRouter.account(), "openrouter-api-key");
+        assert_eq!(Provider::Anthropic.account(), "anthropic-api-key");
+        assert!(no_key(Provider::Anthropic).message.contains("Claude API key"));
+    }
+
+    #[test]
+    fn free_default_gets_a_fallback_list_and_nothing_else_does() {
+        let b = build_request(None, &[], "Hi");
+        assert_eq!(b["model"], "google/gemma-4-31b-it:free");
+        assert_eq!(b["models"], json!(["google/gemma-4-31b-it:free", "openrouter/free"]));
+        for id in ["anthropic/claude-haiku-5.5", "openrouter/free", "google/gemma-4-26b-a4b-it:free", "openai/gpt-5"] {
+            assert!(build_request(Some(id), &[], "Hi").get("models").is_none(), "{id}");
+        }
+    }
+
+    #[test]
+    fn a_429_on_a_free_model_has_its_own_line() {
+        let free = parse_openrouter(429, "{}", "google/gemma-4-31b-it:free").unwrap_err();
+        assert_eq!(free.kind, FailureKind::RateLimited);
+        assert!(free.message.starts_with("The free model is getting a lot of questions right now"));
+        assert_eq!(parse_openrouter(429, "{}", "openrouter/free").unwrap_err().message, free.message);
+        let paid = parse_openrouter(429, "{}", "anthropic/claude-haiku-5.5").unwrap_err();
+        assert!(paid.message.contains("OpenRouter") && !paid.message.contains("free model"));
+    }
+
+    // ---- Anthropic path (kept as the optional second provider) ----
+
+    #[test]
+    fn anthropic_request_shape_for_haiku_by_default() {
+        let (body, beta) = build_anthropic_request(None, &[], "What is Rust?");
+        assert!(!beta);
+        assert_eq!(body["model"], "claude-haiku-5-5");
+        assert_eq!(body["max_tokens"], 200);
+        assert_eq!(body["thinking"]["type"], "disabled");
+        assert_eq!(body["output_config"]["effort"], "low");
+        assert!(body.get("fallbacks").is_none() && body.get("reasoning").is_none());
+        assert!(body.get("temperature").is_none() && body.get("top_p").is_none() && body.get("top_k").is_none());
+        assert_eq!(body["messages"], json!([{ "role": "user", "content": "What is Rust?" }]));
+        let system = body["system"].as_str().unwrap();
+        assert!(system.contains("Paperclip") && system.contains("1 to 3 short sentences") && system.contains("no markdown"));
+    }
+
+    #[test]
+    fn anthropic_request_shape_for_sonnet_uses_between_tools_and_fallback() {
+        let (body, beta) = build_anthropic_request(Some("claude-sonnet-5-5"), &[], "Hi");
+        assert!(beta);
+        assert_eq!(body["model"], "claude-sonnet-5-5");
+        assert_eq!(body["thinking"], json!({ "type": "between_tools" }));
+        assert_eq!(body["fallbacks"], "default");
+    }
+
+    #[test]
+    fn anthropic_unknown_models_fall_back_to_haiku() {
+        assert_eq!(build_anthropic_request(Some("claude-opus-5-5"), &[], "Hi").0["model"], "claude-haiku-5-5");
+        assert_eq!(build_anthropic_request(Some("../../evil"), &[], "Hi").0["model"], "claude-haiku-5-5");
+        assert_eq!(build_anthropic_request(Some("anthropic/claude-haiku-5.5"), &[], "Hi").0["model"], "claude-haiku-5-5");
+    }
+
+    fn anthropic_ok(text: &str) -> String {
+        json!({ "stop_reason": "end_turn", "content": [{ "type": "text", "text": text }] }).to_string()
+    }
+
+    #[test]
+    fn anthropic_responses_parse() {
+        assert_eq!(parse_anthropic(200, &anthropic_ok("Paris, of course.")).unwrap(), "Paris, of course.");
+        let body = json!({ "stop_reason": "end_turn", "content": [
+            { "type": "thinking", "thinking": "" }, { "type": "text", "text": "One." }, { "type": "text", "text": "Two." } ] })
+        .to_string();
+        assert_eq!(parse_anthropic(200, &body).unwrap(), "One. Two.");
+        let refusal = json!({ "stop_reason": "refusal", "content": [] }).to_string();
+        assert_eq!(parse_anthropic(200, &refusal).unwrap_err().kind, FailureKind::Refused);
+        assert_eq!(parse_anthropic(200, &anthropic_ok("   ")).unwrap_err().kind, FailureKind::Empty);
+        assert_eq!(parse_anthropic(200, "not json").unwrap_err().kind, FailureKind::Other);
+    }
+
+    #[test]
+    fn anthropic_statuses_map_and_never_echo_the_body() {
+        let kind = |s| parse_anthropic(s, "{}").unwrap_err().kind;
+        assert_eq!(kind(401), FailureKind::Unauthorized);
+        assert_eq!(kind(403), FailureKind::Unauthorized);
+        assert_eq!(kind(429), FailureKind::RateLimited);
+        assert_eq!(kind(529), FailureKind::Overloaded);
+        assert_eq!(kind(400), FailureKind::Other);
+        let e = parse_anthropic(401, "{\"error\":{\"message\":\"invalid x-api-key sk-ant-SECRET\"}}").unwrap_err();
+        assert!(!e.message.contains("SECRET") && e.message.starts_with("Claude didn't accept my API key"));
+    }
+
+    #[test]
+    fn anthropic_sends_its_own_headers_and_never_openrouter_ones() {
+        let (url, seen) = stub("200 OK", anthropic_ok("Hello there."));
+        let (body, beta) = build_anthropic_request(Some("claude-sonnet-5-5"), &[], "Hi");
+        assert_eq!(tauri::async_runtime::block_on(send_anthropic(&url, "test-key-123", &body, beta)).unwrap(), "Hello there.");
+        let req = seen.join().unwrap().to_ascii_lowercase();
+        assert!(req.starts_with("post /api/v1/chat/completions")); // the stub's path, not the real one
+        assert!(req.contains("x-api-key: test-key-123"));
+        assert!(req.contains("anthropic-version: 2023-06-01"));
+        assert!(req.contains("anthropic-beta: server-side-fallback-2026-07-01"));
+        assert!(!req.contains("authorization") && !req.contains("http-referer") && !req.contains("x-title"));
+        assert!(req.contains("\"max_tokens\":200"));
+        let (url, seen) = stub("200 OK", anthropic_ok("Hi."));
+        let (body, beta) = build_anthropic_request(None, &[], "Hi");
+        tauri::async_runtime::block_on(send_anthropic(&url, "k", &body, beta)).unwrap();
+        assert!(!seen.join().unwrap().to_ascii_lowercase().contains("anthropic-beta"));
+    }
+
+    #[test]
+    fn anthropic_failures_over_the_wire() {
+        let (url, _h) = stub("401 Unauthorized", "{\"type\":\"error\"}".to_string());
+        let (body, beta) = build_anthropic_request(None, &[], "Hi");
+        assert_eq!(tauri::async_runtime::block_on(send_anthropic(&url, "k", &body, beta)).unwrap_err().kind, FailureKind::Unauthorized);
+        let e = tauri::async_runtime::block_on(send_anthropic("http://127.0.0.1:9/", "bad\nkey", &body, beta)).unwrap_err();
+        assert_eq!(e.kind, FailureKind::Unauthorized);
     }
 
     // ---- the HTTP path against a local stub (no network, fake key) ----
 
     fn stub(status_line: &'static str, body: String) -> (String, std::thread::JoinHandle<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}/v1/messages", listener.local_addr().unwrap());
+        let url = format!("http://{}/api/v1/chat/completions", listener.local_addr().unwrap());
         let handle = std::thread::spawn(move || {
             let (mut s, _) = listener.accept().unwrap();
             let mut buf = vec![0u8; 16384];
@@ -611,46 +984,74 @@ mod tests {
     #[test]
     fn sends_the_documented_headers_and_body() {
         let (url, seen) = stub("200 OK", ok_body("Hello there."));
-        let (body, beta) = build_request(Some("claude-sonnet-5-5"), &[], "Hi");
-        let out = tauri::async_runtime::block_on(send(&url, "test-key-123", &body, beta));
+        let body = build_request(Some("openai/gpt-5-mini"), &[turn("user", "earlier"), turn("assistant", "reply")], "Hi");
+        let out = tauri::async_runtime::block_on(send(&url, "test-key-123", &body));
         assert_eq!(out.unwrap(), "Hello there.");
-        let req = seen.join().unwrap().to_ascii_lowercase();
-        assert!(req.starts_with("post /v1/messages"));
-        assert!(req.contains("x-api-key: test-key-123"));
-        assert!(req.contains("anthropic-version: 2023-06-01"));
-        assert!(req.contains("anthropic-beta: server-side-fallback-2026-07-01"));
-        assert!(req.contains("\"model\":\"claude-sonnet-5-5\""));
-        assert!(req.contains("\"max_tokens\":200"));
+        let raw = seen.join().unwrap();
+        let req = raw.to_ascii_lowercase();
+        assert!(req.starts_with("post /api/v1/chat/completions"));
+        assert!(req.contains("authorization: bearer test-key-123"));
+        assert!(req.contains("http-referer: https://github.com/annuai/paperclip"));
+        assert!(req.contains("x-title: paperclip"));
+        assert!(!req.contains("x-api-key") && !req.contains("anthropic"));
+        let json_start = raw.find("\r\n\r\n").unwrap() + 4;
+        let sent: Value = serde_json::from_str(&raw[json_start..]).unwrap();
+        assert_eq!(sent, body);
+        assert_eq!(sent["model"], "openai/gpt-5-mini");
+        assert_eq!(sent["max_tokens"], 300);
+        assert_eq!(sent["reasoning"]["effort"], "none");
+        assert_eq!(sent["messages"][0]["role"], "system");
+        assert_eq!(sent["messages"][3], json!({ "role": "user", "content": "Hi" }));
     }
 
     #[test]
-    fn haiku_sends_no_beta_header() {
-        let (url, seen) = stub("200 OK", ok_body("Hi."));
-        let (body, beta) = build_request(None, &[], "Hi");
-        tauri::async_runtime::block_on(send(&url, "k", &body, beta)).unwrap();
-        assert!(!seen.join().unwrap().to_ascii_lowercase().contains("anthropic-beta"));
-    }
-
-    #[test]
-    fn a_401_from_the_server_is_a_friendly_unauthorized() {
-        let (url, _h) = stub("401 Unauthorized", "{\"type\":\"error\"}".to_string());
-        let (body, beta) = build_request(None, &[], "Hi");
-        let e = tauri::async_runtime::block_on(send(&url, "k", &body, beta)).unwrap_err();
-        assert_eq!(e.kind, FailureKind::Unauthorized);
+    fn server_errors_map_through_the_http_path() {
+        for (line, kind) in [("401 Unauthorized", FailureKind::Unauthorized), ("402 Payment Required", FailureKind::OutOfCredits), ("503 Service Unavailable", FailureKind::Overloaded)] {
+            let (url, _h) = stub(line, "{\"error\":{\"code\":0,\"message\":\"x\"}}".to_string());
+            let e = tauri::async_runtime::block_on(send(&url, "k", &build_request(None, &[], "Hi"))).unwrap_err();
+            assert_eq!(e.kind, kind, "{line}");
+        }
     }
 
     #[test]
     fn nothing_listening_means_offline() {
         let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port(); // freed again on drop
-        let (body, beta) = build_request(None, &[], "Hi");
-        let e = tauri::async_runtime::block_on(send(&format!("http://127.0.0.1:{port}/v1/messages"), "k", &body, beta)).unwrap_err();
+        let e = tauri::async_runtime::block_on(send(&format!("http://127.0.0.1:{port}/"), "k", &build_request(None, &[], "Hi"))).unwrap_err();
         assert_eq!(e.kind, FailureKind::Offline);
     }
 
     #[test]
     fn a_key_with_header_breaking_bytes_never_reaches_the_wire() {
-        let (body, beta) = build_request(None, &[], "Hi");
-        let e = tauri::async_runtime::block_on(send("http://127.0.0.1:9/", "bad\nkey", &body, beta)).unwrap_err();
+        let e = tauri::async_runtime::block_on(send("http://127.0.0.1:9/", "bad\nkey", &build_request(None, &[], "Hi"))).unwrap_err();
         assert_eq!(e.kind, FailureKind::Unauthorized);
+    }
+
+    /// Live smoke test (run by hand): a deliberately invalid key must give a 401 from the real OpenRouter,
+    /// mapped to the bad-key message. `cargo test --lib live_invalid_key -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn live_invalid_key_is_a_401_unauthorized() {
+        let body = build_request(None, &[], "Say hi.");
+        let client = reqwest::Client::new();
+        let (status, text) = tauri::async_runtime::block_on(async {
+            let r = client
+                .post(API_URL)
+                .header("Authorization", format!("Bearer sk-or-v1-{}", "0".repeat(64)))
+                .header("HTTP-Referer", REFERER)
+                .header("X-Title", APP_TITLE)
+                .json(&body)
+                .send()
+                .await
+                .unwrap();
+            (r.status().as_u16(), r.text().await.unwrap())
+        });
+        println!("LIVE status={status} body={text}");
+        assert_eq!(status, 401);
+        let e = parse_response(status, &text).unwrap_err();
+        assert_eq!(e.kind, FailureKind::Unauthorized);
+        assert!(e.message.starts_with("OpenRouter didn't accept my API key"));
+        // and through the real send() path
+        let e2 = tauri::async_runtime::block_on(send(API_URL, &format!("sk-or-v1-{}", "0".repeat(64)), &body)).unwrap_err();
+        assert_eq!(e2.kind, FailureKind::Unauthorized);
     }
 }

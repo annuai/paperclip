@@ -16,7 +16,7 @@ The character is original artwork. Paperclip is not affiliated with Microsoft an
 - **Meeting heads-up (macOS, opt-in):** a nudge 5 minutes before calendar events. Calendar access is only requested when you turn it on.
 - **Notices your computer:** hides while you present or watch something full screen and comes back after, dances when music plays, sweats when the CPU is pegged, gets tired on low battery and yawns late at night.
 - **Seasonal outfits:** a pumpkin, Santa hat, party hat, heart or shamrock on the right days (turn off under **Style**).
-- **Answers questions (optional):** *Ask Paperclip* sends a short question to Claude and shows the answer in his balloon (1 to 3 sentences). You bring your own Anthropic API key, kept in your system keychain and never shown again. Only the text you type and the last few turns of the chat are sent: no screen, clipboard or files. Pick Haiku (fast, default) or Sonnet in the submenu.
+- **Answers questions (optional, free by default):** *Ask Paperclip* sends a short question to a model on [OpenRouter](https://openrouter.ai) and shows the answer in his balloon (1 to 3 sentences). It works out of the box with a free model (Gemma 4 31B): you only need a free OpenRouter API key ([create one here](https://openrouter.ai/keys)). You can switch to Claude Haiku 5.5 (paid on OpenRouter) or any other OpenRouter model id (**Other model…**). Prefer the Claude API directly? Switch the provider to **Claude (Anthropic)** and add an Anthropic API key. Keys are kept in your system keychain, one per provider, and never shown again. Only the text you type and the last few turns of the chat go to the provider and the model you picked: no screen, clipboard or files. Free models have tight rate limits, so he may ask you to try again in a bit.
 - **Lives:** blinks, looks around, fidgets, dozes off when you leave him alone, and enters and leaves with a yoga mat in several different ways.
 - **Two styles:** *Classic* (glossy) and *Flat* (geometric, set in Oswald). Switch between them at any time.
 - **Stays out of the way:** clicks on the empty parts of his window pass through to the apps underneath, and he never takes keyboard focus, except while you are typing a question to Ask Paperclip.
@@ -33,14 +33,14 @@ The character is original artwork. Paperclip is not affiliated with Microsoft an
 |---|---|
 | Click him | Notices you, and his eyes follow your cursor anywhere on screen (click again, or stop moving for 8 s, to end it) |
 | Double-click him | Tells a joke |
-| Triple-click him | Shares a quote |
+| Triple-click him, or middle-click him | Shares a quote |
 | Fling him (drag and let go fast) | He flies, bounces off the screen edges and gets dizzy if it was rough |
 | Drop a file or folder on him | Offers to zip it next to the original |
-| Choose **Ask Paperclip** > **Ask a question…** | A box opens in his balloon: type, press Enter to send, Esc to cancel. The first time he asks for your Claude API key (**Set Claude API key…** / **Remove API key** live in the same submenu). Answers offer **Reply** and **Done** |
+| Choose **Ask Paperclip** > **Ask a question…** | A box opens in his balloon: type, press Enter to send, Esc to cancel. The first time he asks for your [OpenRouter API key](https://openrouter.ai/keys) (**Set OpenRouter API key…** / **Remove API key**, the **OpenRouter / Claude (Anthropic)** provider choice and the model choice live in the same submenu). Answers offer **Reply** and **Done** |
 | Tap the yoga mat | Bounces like it's a trampoline. Keep tapping to keep him jumping |
 | Drag him | Moves wherever you drop him. Whip him around fast and he gets dizzy |
 | Hover over him while he sleeps | Wakes up |
-| Right-click him, or click the menu-bar icon | Opens the menu: say hi, joke, quote, nap, style and outfits, quiet mode, ask Claude, wellbeing (water, stretch, focus timer, meetings), presence, unlock greeting, updates, launch at login, quit |
+| Right-click him, or click the menu-bar icon | Opens the menu: say hi, joke, quote, nap, style and outfits, quiet mode, ask a question (OpenRouter), wellbeing (water, stretch, focus timer, meetings), presence, unlock greeting, updates, launch at login, quit |
 
 Left-clicking the menu-bar icon brings him back if you've hidden him.
 

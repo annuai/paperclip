@@ -112,7 +112,7 @@ export function runSandbox(): void {
         menu.open(70, 4, buildMenu({
           sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, outfits: true, style: el === menuEls[0] && !compare ? style : el === menuEls[0] ? 'classic' : 'flat',
           water: { enabled: true, intervalMin: 45, glassesToday: 3 }, stretch: { enabled: true, everyMin: 60 },
-          focusLeft, calendarSupported: true, meetingHeadsUp: true, ask: { keySet: true, model: 'claude-haiku-5-5' },
+          focusLeft, calendarSupported: true, meetingHeadsUp: true, ask: { keySet: true, provider: 'openrouter', model: 'google/gemma-4-31b-it:free', claudeModel: 'claude-haiku-5-5' },
         }));
         for (const id of path) {
           const row = [...el.parentElement!.querySelectorAll<HTMLElement>('.item')].filter((r) => r.offsetParent !== null).find((r) => r.dataset.id === id);

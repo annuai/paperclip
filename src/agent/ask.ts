@@ -1,21 +1,46 @@
 import type { BalloonAction, PromptOpts } from './agent';
 
-/** The two models Ask Paperclip may use (Rust enforces the same list; anything else becomes the default). */
-export type AskModel = 'claude-haiku-5-5' | 'claude-sonnet-5-5';
-export const ASK_MODELS: AskModel[] = ['claude-haiku-5-5', 'claude-sonnet-5-5'];
-export const DEFAULT_ASK_MODEL: AskModel = 'claude-haiku-5-5';
+/** Which service answers. OpenRouter is the default (it has free models); the Claude API is optional. */
+export type AskProvider = 'openrouter' | 'anthropic';
+export const DEFAULT_ASK_PROVIDER: AskProvider = 'openrouter';
+export const providerName = (p: AskProvider): string => (p === 'anthropic' ? 'Claude' : 'OpenRouter');
+export function normalizeAskProvider(v: unknown): AskProvider {
+  return v === 'anthropic' ? 'anthropic' : DEFAULT_ASK_PROVIDER;
+}
+
+/** An OpenRouter model id such as `google/gemma-4-31b-it:free`. Rust validates with the same pattern. */
+export type AskModel = string;
+export const FREE_MODEL: AskModel = 'google/gemma-4-31b-it:free';
+export const PAID_HAIKU_MODEL: AskModel = 'anthropic/claude-haiku-5.5';
+export const DEFAULT_ASK_MODEL: AskModel = FREE_MODEL;
+export const MAX_MODEL_ID_CHARS = 100;
+const MODEL_ID = /^[A-Za-z0-9._~-]+\/[A-Za-z0-9._:~-]+$/;
+export function isValidModelId(v: unknown): v is string {
+  return typeof v === 'string' && v.length <= MAX_MODEL_ID_CHARS && MODEL_ID.test(v);
+}
+/** Stored OpenRouter model: any valid id is kept; anything else (including the old `claude-*` values) is the free default. */
 export function normalizeAskModel(v: unknown): AskModel {
-  return ASK_MODELS.find((m) => m === v) ?? DEFAULT_ASK_MODEL;
+  return isValidModelId(v) ? v : DEFAULT_ASK_MODEL;
+}
+/** True when the OpenRouter model is one of the two presets (otherwise the menu shows it as the custom radio). */
+export const isPresetModel = (m: AskModel): boolean => m === FREE_MODEL || m === PAID_HAIKU_MODEL;
+
+/** The two models of the optional Claude (Anthropic) provider. Rust enforces the same list. */
+export type ClaudeModel = 'claude-haiku-5-5' | 'claude-sonnet-5-5';
+export const CLAUDE_MODELS: ClaudeModel[] = ['claude-haiku-5-5', 'claude-sonnet-5-5'];
+export const DEFAULT_CLAUDE_MODEL: ClaudeModel = 'claude-haiku-5-5';
+export function normalizeClaudeModel(v: unknown): ClaudeModel {
+  return CLAUDE_MODELS.find((m) => m === v) ?? DEFAULT_CLAUDE_MODEL;
 }
 
 /** Exchanges (question + answer) kept in memory and sent along as context. */
 export const MAX_EXCHANGES = 6;
 export const MAX_QUESTION_CHARS = 500;
-export const MAX_KEY_CHARS = 300;
+export const MAX_KEY_CHARS = 512;
 
 export interface Turn { role: 'user' | 'assistant'; text: string }
 
-export type FailureKind = 'noKey' | 'unauthorized' | 'rateLimited' | 'overloaded' | 'offline' | 'timeout' | 'refused' | 'empty' | 'other';
+export type FailureKind = 'noKey' | 'unauthorized' | 'outOfCredits' | 'badModel' | 'rateLimited' | 'overloaded' | 'offline' | 'timeout' | 'refused' | 'empty' | 'other';
 export interface AskFailure { kind: FailureKind; message: string }
 export type AskResult = { ok: true; answer: string } | { ok: false; failure: AskFailure };
 
@@ -34,7 +59,7 @@ export class AskHistory {
   }
 }
 
-export type AskLine = 'intro' | 'prompt' | 'again' | 'keyPrompt' | 'keySaved' | 'keyRemoved' | 'keyFailed';
+export type AskLine = 'intro' | 'prompt' | 'again' | 'keyPrompt' | 'keySaved' | 'keyRemoved' | 'keyFailed' | 'modelPrompt' | 'modelSaved' | 'modelInvalid';
 
 export interface AskDeps {
   hasKey(): boolean;
@@ -51,6 +76,8 @@ export interface AskDeps {
   query(question: string, turns: Turn[]): Promise<AskResult>;
   saveKey(key: string): Promise<boolean>;
   removeKey(): Promise<void>;
+  /** Stores the chosen model id (already validated). */
+  setModel(id: string): void;
   /** Bumped by the host whenever something else takes over (a click, a hide, another feature). */
   epoch(): number;
 }
@@ -124,7 +151,7 @@ export class AskFlow {
     }
   }
 
-  /** Menu: "Set Claude API key…" on its own (no question afterwards). */
+  /** Menu: "Set OpenRouter API key…" on its own (no question afterwards). */
   async setKey(): Promise<void> {
     const run = ++this.run;
     const epoch = this.deps.epoch();
@@ -144,6 +171,28 @@ export class AskFlow {
     this.state = 'idle';
   }
 
+  /** Menu: "Other model…". Asks for an OpenRouter model id and stores it when it looks valid. */
+  async chooseModel(): Promise<void> {
+    const run = ++this.run;
+    const epoch = this.deps.epoch();
+    const stale = () => run !== this.run || this.deps.epoch() !== epoch;
+    try {
+      const text = await this.deps.line('modelPrompt');
+      const typed = await this.deps.prompt(text, { secret: false, maxLength: MAX_MODEL_ID_CHARS, placeholder: 'vendor/model-name' });
+      if (stale()) return;
+      const id = typed?.trim() ?? '';
+      if (!id) return;
+      if (!isValidModelId(id)) {
+        await this.deps.say(await this.deps.line('modelInvalid'));
+        return;
+      }
+      this.deps.setModel(id);
+      await this.deps.say(await this.deps.line('modelSaved'));
+    } finally {
+      if (run === this.run) this.state = 'idle';
+    }
+  }
+
   /** He was hidden (or the app is quitting): forget the conversation and let any running flow drop out. */
   reset(): void {
     this.run++;
@@ -154,9 +203,9 @@ export class AskFlow {
   private async enterKey(stale: () => boolean, confirm: boolean): Promise<boolean> {
     this.state = 'keyEntry';
     const text = await this.deps.line('keyPrompt');
-    // The key prompt already says that only typed text goes to Claude, so it counts as the first-run line too.
+    // The key prompt already says that only typed text goes to the provider, so it counts as the first-run line too.
     if (!this.deps.introSeen()) this.deps.markIntroSeen();
-    const typed = await this.deps.prompt(text, { secret: true, maxLength: MAX_KEY_CHARS, placeholder: 'Paste your API key' });
+    const typed = await this.deps.prompt(text, { secret: true, maxLength: MAX_KEY_CHARS, placeholder: 'Paste your OpenRouter key' });
     if (stale()) return false;
     const key = typed?.trim() ?? '';
     if (!key) return false;

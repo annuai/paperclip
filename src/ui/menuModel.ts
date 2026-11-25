@@ -3,7 +3,8 @@ import type { IntervalMin } from '../agent/hydration';
 import { FOCUS_OPTIONS } from '../agent/focus';
 import { STRETCH_OPTIONS } from '../agent/stretch';
 import type { StretchMin } from '../agent/stretch';
-import type { AskModel } from '../agent/ask';
+import { FREE_MODEL, PAID_HAIKU_MODEL, isPresetModel } from '../agent/ask';
+import type { AskModel, AskProvider, ClaudeModel } from '../agent/ask';
 import type { Style } from '../art/style';
 import type { MenuItem } from './contextMenu';
 
@@ -21,7 +22,7 @@ export interface MenuState {
   focusLeft: number | null; // whole minutes left while a focus session runs
   calendarSupported: boolean; // macOS only
   meetingHeadsUp: boolean;
-  ask: { keySet: boolean; model: AskModel };
+  ask: { keySet: boolean; provider: AskProvider; model: AskModel; claudeModel: ClaudeModel };
 }
 
 /**
@@ -30,7 +31,7 @@ export interface MenuState {
  * (or in a similar group), never as another top-level row.
  * "Check for updates…" sits inside the Presence submenu for the same reason (no new top-level row).
  * The one exception is "Ask Paperclip": a headline action like Say hi / Tell a joke, so it gets its own row. It is a
- * single submenu (ask, key management, model) rather than several rows, and the row-count pin test was updated for it.
+ * single submenu (ask, provider, key management, model choice) rather than several rows, and the row-count pin test was updated for it.
  */
 export function buildMenu(s: MenuState): MenuItem[] {
   return [
@@ -42,10 +43,20 @@ export function buildMenu(s: MenuState): MenuItem[] {
       id: 'ask', label: 'Ask Paperclip',
       children: [
         { id: 'ask-open', label: 'Ask a question…' },
-        { id: 'ask-key', label: 'Set Claude API key…', separatorBefore: true },
+        { id: 'ask-provider-openrouter', label: 'OpenRouter', role: 'radio' as const, checked: s.ask.provider !== 'anthropic', separatorBefore: true },
+        { id: 'ask-provider-anthropic', label: 'Claude (Anthropic)', role: 'radio' as const, checked: s.ask.provider === 'anthropic' },
+        { id: 'ask-key', label: s.ask.provider === 'anthropic' ? 'Set Claude API key…' : 'Set OpenRouter API key…', separatorBefore: true },
         ...(s.ask.keySet ? [{ id: 'ask-remove', label: 'Remove API key' }] : []),
-        { id: 'ask-model-haiku', label: 'Fast answers (Haiku)', role: 'radio' as const, checked: s.ask.model !== 'claude-sonnet-5-5', separatorBefore: true },
-        { id: 'ask-model-sonnet', label: 'Smarter answers (Sonnet)', role: 'radio' as const, checked: s.ask.model === 'claude-sonnet-5-5' },
+        ...(s.ask.provider === 'anthropic'
+          ? [
+              { id: 'ask-claude-haiku', label: 'Fast answers (Haiku)', role: 'radio' as const, checked: s.ask.claudeModel !== 'claude-sonnet-5-5', separatorBefore: true },
+              { id: 'ask-claude-sonnet', label: 'Smarter answers (Sonnet)', role: 'radio' as const, checked: s.ask.claudeModel === 'claude-sonnet-5-5' },
+            ]
+          : [
+              { id: 'ask-model-free', label: 'Free (Gemma 4 31B)', role: 'radio' as const, checked: s.ask.model === FREE_MODEL, separatorBefore: true },
+              { id: 'ask-model-haiku', label: 'Claude Haiku 5.5 (paid)', role: 'radio' as const, checked: s.ask.model === PAID_HAIKU_MODEL },
+              { id: 'ask-model-other', label: isPresetModel(s.ask.model) ? 'Other model…' : s.ask.model, role: 'radio' as const, checked: !isPresetModel(s.ask.model) },
+            ]),
       ],
     },
     { id: 'animate', label: 'Animate!' },

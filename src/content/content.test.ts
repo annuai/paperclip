@@ -67,13 +67,13 @@ describe('content', () => {
     }
   });
   it('ask lines: variety per kind, fit the balloon with an input row, and the intro states the privacy promise', () => {
-    for (const [k, min] of [['intro', 2], ['prompt', 3], ['again', 3], ['keyPrompt', 2], ['keySaved', 2], ['keyRemoved', 2], ['keyFailed', 2]] as const) {
+    for (const [k, min] of [['intro', 2], ['prompt', 3], ['again', 3], ['keyPrompt', 2], ['keySaved', 2], ['keyRemoved', 2], ['keyFailed', 2], ['modelPrompt', 2], ['modelSaved', 2], ['modelInvalid', 2]] as const) {
       const l = ask.filter((x) => x.kind === k);
       expect(l.length, k).toBeGreaterThanOrEqual(min);
       expect(l.every((x) => x.text.length <= 100), k).toBe(true);
     }
-    expect(ask.filter((x) => x.kind === 'intro').every((x) => /only/i.test(x.text) && /claude/i.test(x.text))).toBe(true);
-    expect(ask.filter((x) => x.kind === 'keyPrompt').every((x) => /keychain/i.test(x.text))).toBe(true);
+    expect(ask.filter((x) => x.kind === 'intro').every((x) => /only/i.test(x.text) && x.text.includes('{provider}'))).toBe(true);
+    expect(ask.filter((x) => x.kind === 'keyPrompt').every((x) => /keychain/i.test(x.text) && x.text.includes('{provider}'))).toBe(true);
   });
   it('update lines: variety per kind, balloon-sized, the version template used once', () => {
     for (const [k, min] of [['upToDate', 3], ['available', 3], ['checkFailed', 3], ['installing', 2], ['installFailed', 2]] as const) {
