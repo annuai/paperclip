@@ -21,12 +21,13 @@ describe('provider and model normalizing', () => {
   it('Groq: provider name, normalization and model ids (vendor prefix optional)', () => {
     expect(providerName('groq')).toBe('Groq');
     expect(normalizeAskProvider('groq')).toBe('groq');
-    expect(DEFAULT_GROQ_MODEL).toBe('llama-3.3-70b-versatile');
+    expect(DEFAULT_GROQ_MODEL).toBe('qwen/qwen3.8-27b');
     for (const ok of ['llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant', 'meta-llama/llama-4-scout-17b-16e-instruct']) expect(isValidGroqModelId(ok), ok).toBe(true);
     for (const bad of ['', 'a b', 'a/b/c', '/b', 'a/', '-x', `a${'b'.repeat(100)}`, 5]) expect(isValidGroqModelId(bad), String(bad)).toBe(false);
     expect(normalizeGroqModel('openai/gpt-oss-20b')).toBe('openai/gpt-oss-20b');
-    expect(normalizeGroqModel('a b')).toBe('llama-3.3-70b-versatile');
-    expect(normalizeGroqModel(undefined)).toBe('llama-3.3-70b-versatile');
+    expect(normalizeGroqModel('a b')).toBe('qwen/qwen3.8-27b');
+    expect(normalizeGroqModel(undefined)).toBe('qwen/qwen3.8-27b');
+    expect(normalizeGroqModel('llama-3.3-70b-versatile')).toBe('qwen/qwen3.8-27b');
     expect(isPresetGroqModel('openai/gpt-oss-120b')).toBe(true);
     expect(isPresetGroqModel('openai/gpt-oss-20b')).toBe(false);
   });

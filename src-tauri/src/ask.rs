@@ -20,9 +20,9 @@ const GROQ_URL: &str = "https://api.groq.com/openai/v1/chat/completions";
 /// Groq production models (console.groq.com/docs/models). The default is a fast non-reasoning chat model, so no
 /// reasoning params are needed; the menu's "smarter" choice, `openai/gpt-oss-120b`, is a reasoning model and gets
 /// minimal, hidden reasoning (see `build_groq_request`).
-const GROQ_DEFAULT_MODEL: &str = "llama-3.3-70b-versatile";
+const GROQ_DEFAULT_MODEL: &str = "qwen/qwen3.8-27b";
 /// Tight cap on purpose: the balloon holds ~220 characters (about 60 tokens).
-const GROQ_MAX_TOKENS: u32 = 120;
+const GROQ_MAX_TOKENS: u32 = 150;
 /// A reasoning model spends part of `max_tokens` on its (hidden) reasoning, so it gets headroom.
 const GROQ_REASONING_MAX_TOKENS: u32 = 600;
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -175,6 +175,11 @@ fn is_groq_reasoning_model(model: &str) -> bool {
     model.starts_with("openai/gpt-oss-")
 }
 
+/// Groq's Qwen models think by default; `reasoning_effort: "none"` switches that off so the short cap is all answer.
+fn is_groq_qwen(model: &str) -> bool {
+    model.starts_with("qwen/")
+}
+
 /// The two Claude models of the Anthropic path; anything else becomes Haiku.
 fn resolve_claude_model(requested: Option<&str>) -> &'static str {
     if requested == Some(SONNET) {
@@ -250,7 +255,7 @@ pub fn build_openrouter_request(model: Option<&str>, history: &[Turn], question:
 
 /// The Groq (OpenAI-compatible) JSON body. The system prompt is the first message.
 ///
-/// Non-reasoning models (the default Llama) get only `max_tokens: 120`. The gpt-oss reasoning models get
+/// The default Qwen gets `max_tokens: 150` and `reasoning_effort: "none"`; other non-reasoning models get only the cap. The gpt-oss reasoning models get
 /// `reasoning_effort: "low"` and `include_reasoning: false` (Groq: gpt-oss rejects `reasoning_format`, and the two
 /// are mutually exclusive) plus more token headroom, because reasoning tokens count against `max_tokens`.
 /// Other models never get reasoning params (they may reject them). No sampling params, no `n`, no `logprobs`.
@@ -267,6 +272,8 @@ pub fn build_groq_request(model: Option<&str>, history: &[Turn], question: &str)
     if reasoning {
         body["reasoning_effort"] = json!("low");
         body["include_reasoning"] = json!(false);
+    } else if is_groq_qwen(model) {
+        body["reasoning_effort"] = json!("none");
     }
     body
 }
@@ -547,6 +554,8 @@ fn transport_failure(provider: Provider, e: &reqwest::Error) -> AskFailure {
 
 fn build_client(provider: Provider) -> Result<reqwest::Client, AskFailure> {
     reqwest::Client::builder()
+        // Groq sits behind Cloudflare, which rejects requests with no User-Agent (error 1010).
+        .user_agent(concat!("Paperclip/", env!("CARGO_PKG_VERSION")))
         .timeout(TIMEOUT)
         .build()
         .map_err(|_| failure(FailureKind::Other, &format!("Something went wrong reaching {}. Try again later.", provider.name())))
@@ -1181,11 +1190,12 @@ mod tests {
     }
 
     #[test]
-    fn groq_default_request_is_tight_and_has_no_reasoning_params() {
+    fn groq_default_request_is_tight_qwen_with_thinking_off() {
         let body = build_groq_request(None, &[], "What is Rust?");
-        assert_eq!(body["model"], "llama-3.3-70b-versatile");
-        assert_eq!(body["max_tokens"], 120);
-        for k in ["reasoning_effort", "reasoning_format", "include_reasoning", "reasoning", "temperature", "top_p", "n", "stream", "logprobs", "models", "system"] {
+        assert_eq!(body["model"], "qwen/qwen3.8-27b");
+        assert_eq!(body["max_tokens"], 150);
+        assert_eq!(body["reasoning_effort"], "none");
+        for k in ["reasoning_format", "include_reasoning", "reasoning", "temperature", "top_p", "n", "stream", "logprobs", "models", "system"] {
             assert!(body.get(k).is_none(), "{k}");
         }
         let msgs = body["messages"].as_array().unwrap();
@@ -1209,10 +1219,10 @@ mod tests {
 
     #[test]
     fn groq_other_models_never_get_reasoning_params() {
-        for id in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3-32b"] {
+        for id in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "meta-llama/llama-4-scout-17b-16e-instruct", "allam-2-7b"] {
             let body = build_groq_request(Some(id), &[], "Hi");
             assert_eq!(body["model"], id);
-            assert_eq!(body["max_tokens"], 120);
+            assert_eq!(body["max_tokens"], 150);
             assert!(body.get("reasoning_effort").is_none() && body.get("include_reasoning").is_none() && body.get("reasoning_format").is_none(), "{id}");
         }
     }
@@ -1220,9 +1230,9 @@ mod tests {
     #[test]
     fn groq_invalid_model_ids_fall_back_to_the_default() {
         for id in ["", "a b", "a/b/c", "/b", "a/", "-x", "evil\"x", "a/b\nc", "ü", "a/ü"] {
-            assert_eq!(build_groq_request(Some(id), &[], "Hi")["model"], "llama-3.3-70b-versatile", "{id:?}");
+            assert_eq!(build_groq_request(Some(id), &[], "Hi")["model"], "qwen/qwen3.8-27b", "{id:?}");
         }
-        assert_eq!(build_groq_request(Some(&"b".repeat(101)), &[], "Hi")["model"], "llama-3.3-70b-versatile");
+        assert_eq!(build_groq_request(Some(&"b".repeat(101)), &[], "Hi")["model"], "qwen/qwen3.8-27b");
     }
 
     #[test]

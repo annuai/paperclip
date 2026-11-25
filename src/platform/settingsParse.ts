@@ -35,7 +35,7 @@ export interface Settings {
   focus: FocusSaved | null; // a running focus session's end timestamp (survives sleep and restarts)
   outfits: OutfitSetting; // seasonal outfits: 'auto' dresses for the date (default), 'off' never
   askProvider: AskProvider; // Ask Paperclip: 'openrouter' (default, also for existing users), 'groq' (optional, free tier) or 'anthropic' (optional, needs a Claude API key)
-  askGroqModel: GroqModel; // the Groq provider's model id (default 'llama-3.3-70b-versatile', or 'openai/gpt-oss-120b', or any valid Groq id)
+  askGroqModel: GroqModel; // the Groq provider's model id (default 'qwen/qwen3.8-27b'; the old default 'llama-3.3-70b-versatile' migrates to it, or 'openai/gpt-oss-120b', or any valid Groq id)
   askClaudeModel: ClaudeModel; // the Anthropic provider's model: 'claude-haiku-5-5' (default) or 'claude-sonnet-5-5'. Old stored `askModel: 'claude-*'` values land here.
   askModel: AskModel; // Ask Paperclip: an OpenRouter model id (default free 'google/gemma-4-31b-it:free'). The API key itself is NOT a setting: it lives in the OS keychain.
   askIntroSeen: boolean; // the one-time "only what you type is sent to the provider" line has been shown

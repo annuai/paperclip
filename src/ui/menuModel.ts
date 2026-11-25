@@ -50,7 +50,7 @@ export function buildMenu(s: MenuState): MenuItem[] {
         ...(s.ask.keySet ? [{ id: 'ask-remove', label: 'Remove API key' }] : []),
         ...(s.ask.provider === 'groq'
           ? [
-              { id: 'ask-groq-fast', label: 'Fast answers (Llama 3.3 70B)', role: 'radio' as const, checked: s.ask.groqModel === GROQ_FAST_MODEL, separatorBefore: true },
+              { id: 'ask-groq-fast', label: 'Fast answers (Qwen 3.8 27B)', role: 'radio' as const, checked: s.ask.groqModel === GROQ_FAST_MODEL, separatorBefore: true },
               { id: 'ask-groq-smart', label: 'Smarter answers (GPT-OSS 120B)', role: 'radio' as const, checked: s.ask.groqModel === GROQ_SMART_MODEL },
               { id: 'ask-groq-other', label: isPresetGroqModel(s.ask.groqModel) ? 'Other model…' : s.ask.groqModel, role: 'radio' as const, checked: !isPresetGroqModel(s.ask.groqModel) },
             ]

@@ -26,18 +26,21 @@ export function normalizeAskModel(v: unknown): AskModel {
 export const isPresetModel = (m: AskModel): boolean => m === FREE_MODEL || m === PAID_HAIKU_MODEL;
 
 /**
- * A Groq model id such as `llama-3.3-70b-versatile` or `openai/gpt-oss-20b` (the vendor prefix is optional).
+ * A Groq model id such as `qwen/qwen3.8-27b` or `openai/gpt-oss-20b` (the vendor prefix is optional).
  * Rust validates with the same pattern.
  */
 export type GroqModel = string;
-export const GROQ_FAST_MODEL: GroqModel = 'llama-3.3-70b-versatile';
+export const GROQ_FAST_MODEL: GroqModel = 'qwen/qwen3.8-27b';
 export const GROQ_SMART_MODEL: GroqModel = 'openai/gpt-oss-120b';
 export const DEFAULT_GROQ_MODEL: GroqModel = GROQ_FAST_MODEL;
 const GROQ_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._~-]*(\/[A-Za-z0-9._:~-]+)?$/;
 export function isValidGroqModelId(v: unknown): v is string {
   return typeof v === 'string' && v.length <= MAX_MODEL_ID_CHARS && GROQ_MODEL_ID.test(v);
 }
+/** Earlier preset ids Groq no longer offers on every account (they 404 "model_not_found"): moved to the default. */
+const RETIRED_GROQ_PRESETS = new Set(['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
 export function normalizeGroqModel(v: unknown): GroqModel {
+  if (typeof v === 'string' && RETIRED_GROQ_PRESETS.has(v)) return DEFAULT_GROQ_MODEL;
   return isValidGroqModelId(v) ? v : DEFAULT_GROQ_MODEL;
 }
 /** True when the Groq model is one of the two presets (otherwise the menu shows it as the custom radio). */

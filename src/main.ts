@@ -490,8 +490,8 @@ async function boot(): Promise<void> {
   // Lines may say {provider}: the privacy promise and the key prompt always name the service that is active.
   const askLine = async (k: AskLine): Promise<string> =>
     (await content.next(`ask${k[0].toUpperCase()}${k.slice(1)}` as ContentKind)).text.replaceAll('{provider}', providerName(askProvider))
-      .replaceAll('{example}', askProvider === 'groq' ? 'llama-3.3-70b-versatile' : 'openai/gpt-5-mini')
-      .replaceAll('{shape}', askProvider === 'groq' ? 'llama-3.3-70b-versatile or openai/gpt-oss-20b' : 'vendor/model-name');
+      .replaceAll('{example}', askProvider === 'groq' ? 'openai/gpt-oss-20b' : 'openai/gpt-5-mini')
+      .replaceAll('{shape}', askProvider === 'groq' ? 'qwen/qwen3.8-27b or openai/gpt-oss-20b' : 'vendor/model-name');
   const setGroqModel = (id: GroqModel) => {
     askGroqModel = id;
     void saveSettings({ askGroqModel });

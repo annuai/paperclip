@@ -110,7 +110,7 @@ describe('ask settings', () => {
     expect(DEFAULTS.askProvider).toBe('openrouter');
     expect(DEFAULTS.askModel).toBe('google/gemma-4-31b-it:free');
     expect(DEFAULTS.askClaudeModel).toBe('claude-haiku-5-5');
-    expect(DEFAULTS.askGroqModel).toBe('llama-3.3-70b-versatile');
+    expect(DEFAULTS.askGroqModel).toBe('qwen/qwen3.8-27b');
     expect(DEFAULTS.askIntroSeen).toBe(false);
     const p = parseSettings({});
     expect([p.askProvider, p.askModel, p.askClaudeModel]).toEqual(['openrouter', 'google/gemma-4-31b-it:free', 'claude-haiku-5-5']);
@@ -129,9 +129,12 @@ describe('ask settings', () => {
     expect(parseSettings({ askModel: 42, askProvider: 'bing' }).askProvider).toBe('openrouter');
     expect(parseSettings({ askProvider: 'groq' }).askProvider).toBe('groq');
     expect(parseSettings({ askGroqModel: 'openai/gpt-oss-20b' }).askGroqModel).toBe('openai/gpt-oss-20b');
-    expect(parseSettings({ askGroqModel: 'llama-3.1-8b-instant' }).askGroqModel).toBe('llama-3.1-8b-instant');
-    expect(parseSettings({ askGroqModel: 'a b' }).askGroqModel).toBe('llama-3.3-70b-versatile');
-    expect(parseSettings({ askGroqModel: 7 }).askGroqModel).toBe('llama-3.3-70b-versatile');
+    expect(parseSettings({ askGroqModel: 'openai/gpt-oss-20b' }).askGroqModel).toBe('openai/gpt-oss-20b');
+    // retired presets (404 model_not_found on many accounts) move to the new default
+    expect(parseSettings({ askGroqModel: 'llama-3.3-70b-versatile' }).askGroqModel).toBe('qwen/qwen3.8-27b');
+    expect(parseSettings({ askGroqModel: 'llama-3.1-8b-instant' }).askGroqModel).toBe('qwen/qwen3.8-27b');
+    expect(parseSettings({ askGroqModel: 'a b' }).askGroqModel).toBe('qwen/qwen3.8-27b');
+    expect(parseSettings({ askGroqModel: 7 }).askGroqModel).toBe('qwen/qwen3.8-27b');
     expect(parseSettings({}).askProvider).toBe('openrouter');
     // a Groq id in askModel must not leak into the OpenRouter model (needs a vendor/ prefix there)
     expect(parseSettings({ askModel: 'llama-3.3-70b-versatile' }).askModel).toBe('google/gemma-4-31b-it:free');

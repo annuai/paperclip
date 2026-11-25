@@ -7,7 +7,7 @@ const base: MenuState = {
   sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, outfits: true, style: 'classic',
   water: { enabled: true, intervalMin: 45, glassesToday: 2 },
   stretch: { enabled: true, everyMin: 60 }, focusLeft: null, calendarSupported: true, meetingHeadsUp: false,
-  ask: { keySet: false, provider: 'openrouter', model: 'google/gemma-4-31b-it:free', groqModel: 'llama-3.3-70b-versatile', claudeModel: 'claude-haiku-5-5' },
+  ask: { keySet: false, provider: 'openrouter', model: 'google/gemma-4-31b-it:free', groqModel: 'qwen/qwen3.8-27b', claudeModel: 'claude-haiku-5-5' },
 };
 const flat = (items: MenuItem[]): MenuItem[] => items.flatMap((i) => [i, ...flat(i.children ?? [])]);
 const find = (items: MenuItem[], id: string) => flat(items).find((i) => i.id === id);
@@ -66,7 +66,7 @@ describe('main menu', () => {
     expect(buildMenu({ ...base, ask: { ...base.ask, provider: 'groq' } })).toHaveLength(14);
   });
   it('Ask Paperclip (Claude): only the Claude model radios, and the key item names Claude', () => {
-    const a = buildMenu({ ...base, ask: { keySet: true, provider: 'anthropic', model: 'google/gemma-4-31b-it:free', groqModel: 'llama-3.3-70b-versatile', claudeModel: 'claude-sonnet-5-5' } });
+    const a = buildMenu({ ...base, ask: { keySet: true, provider: 'anthropic', model: 'google/gemma-4-31b-it:free', groqModel: 'qwen/qwen3.8-27b', claudeModel: 'claude-sonnet-5-5' } });
     expect(find(a, 'ask')?.children?.map((c) => c.id)).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-groq', 'ask-provider-anthropic', 'ask-key', 'ask-remove', 'ask-claude-haiku', 'ask-claude-sonnet']);
     expect(find(a, 'ask-provider-anthropic')?.checked).toBe(true);
     expect(find(a, 'ask-provider-openrouter')?.checked).toBe(false);

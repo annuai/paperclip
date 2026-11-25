@@ -77,7 +77,7 @@ export async function syncTray(
   water = { enabled: true, intervalMin: 45, glasses: 0 },
   greet = true,
   presence = { hidePresenting: true, music: true },
-  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false, outfits: true, askKey: false, askModel: 'google/gemma-4-31b-it:free', askGroqModel: 'llama-3.3-70b-versatile', askProvider: 'openrouter', askClaudeModel: 'claude-haiku-5-5' },
+  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false, outfits: true, askKey: false, askModel: 'google/gemma-4-31b-it:free', askGroqModel: 'qwen/qwen3.8-27b', askProvider: 'openrouter', askClaudeModel: 'claude-haiku-5-5' },
 ): Promise<void> {
   await guard('sync_tray', () =>
     invoke('sync_tray', {

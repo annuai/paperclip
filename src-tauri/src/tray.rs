@@ -63,7 +63,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let ask_provider_openrouter = CheckMenuItem::with_id(app, "ask-provider-openrouter", "OpenRouter", true, true, None::<&str>)?;
     let ask_provider_groq = CheckMenuItem::with_id(app, "ask-provider-groq", "Groq", true, false, None::<&str>)?;
     let ask_provider_anthropic = CheckMenuItem::with_id(app, "ask-provider-anthropic", "Claude (Anthropic)", true, false, None::<&str>)?;
-    let ask_groq_fast = CheckMenuItem::with_id(app, "ask-groq-fast", "Fast answers (Llama 3.3 70B)", true, true, None::<&str>)?;
+    let ask_groq_fast = CheckMenuItem::with_id(app, "ask-groq-fast", "Fast answers (Qwen 3.8 27B)", true, true, None::<&str>)?;
     let ask_groq_smart = CheckMenuItem::with_id(app, "ask-groq-smart", "Smarter answers (GPT-OSS 120B)", true, false, None::<&str>)?;
     let ask_groq_other = CheckMenuItem::with_id(app, "ask-groq-other", "Other model…", true, false, None::<&str>)?;
     let ask_free = CheckMenuItem::with_id(app, "ask-model-free", "Free (Gemma 4 31B)", true, true, None::<&str>)?;
@@ -392,7 +392,7 @@ pub fn sync_tray(app: AppHandle, state: State<'_, TrayHandles>, sync: TraySync) 
     // The custom id is shown as the third radio's label (the frontend only stores ids of the validated shape).
     let other_label = if free || paid || sync.ask_model.len() > 100 { "Other model…".to_string() } else { sync.ask_model.clone() };
     state.ask_other.set_text(other_label).map_err(|e| e.to_string())?;
-    let g_fast = sync.ask_groq_model == "llama-3.3-70b-versatile";
+    let g_fast = sync.ask_groq_model == "qwen/qwen3.8-27b";
     let g_smart = sync.ask_groq_model == "openai/gpt-oss-120b";
     state.ask_groq_fast.set_checked(g_fast).map_err(|e| e.to_string())?;
     state.ask_groq_smart.set_checked(g_smart).map_err(|e| e.to_string())?;
