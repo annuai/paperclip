@@ -28,7 +28,9 @@ const APP_TITLE: &str = "Paperclip";
 const DEFAULT_MODEL: &str = "google/gemma-4-31b-it:free";
 const FREE_ROUTER: &str = "openrouter/free";
 const MAX_MODEL_ID_LEN: usize = 100;
-const MAX_TOKENS: u32 = 300;
+/// Room for a short hidden think plus the answer: some free models (picked by the `openrouter/free` fallback)
+/// must reason, and a tight cap left them with an empty reply. The answer itself is still trimmed to ~220 chars.
+const MAX_TOKENS: u32 = 1000;
 const TIMEOUT: Duration = Duration::from_secs(20);
 /// Six exchanges (a question and its answer) of context at most.
 const MAX_HISTORY_MESSAGES: usize = 12;
@@ -181,8 +183,9 @@ fn build_messages(history: &[Turn], question: &str) -> Vec<Value> {
 
 /// The OpenAI-style JSON body. The system prompt is the first message.
 ///
-/// Reasoning is switched off with `"reasoning": { "effort": "none" }` (OpenRouter's documented "disables reasoning
-/// entirely"), so the 300 output tokens are all answer. No sampling parameters.
+/// Reasoning is kept to `effort: "low"` and `exclude: true` (never shown, never returned). `"none"` is not used:
+/// OpenRouter rejects it with a 400 ("Reasoning is mandatory for this endpoint") whenever the free fallback router
+/// lands on a reasoning-only model. No sampling parameters.
 ///
 /// Only the free default carries a fallback list: `models` goes next to `model`, so a busy free model falls back
 /// to OpenRouter's free router instead of failing. Paid and custom models never get a fallback (no surprise bills).
@@ -194,7 +197,7 @@ pub fn build_openrouter_request(model: Option<&str>, history: &[Turn], question:
         "model": model,
         "messages": messages,
         "max_tokens": MAX_TOKENS,
-        "reasoning": { "effort": "none" },
+        "reasoning": { "effort": "low", "exclude": true },
     });
     if model == DEFAULT_MODEL {
         body["models"] = json!([DEFAULT_MODEL, FREE_ROUTER]);
@@ -618,11 +621,12 @@ mod tests {
     // ---- request ----
 
     #[test]
-    fn request_shape_defaults_to_the_free_model_with_reasoning_off() {
+    fn request_shape_defaults_to_the_free_model_with_low_hidden_reasoning() {
         let body = build_request(None, &[], "What is Rust?");
         assert_eq!(body["model"], "google/gemma-4-31b-it:free");
-        assert_eq!(body["max_tokens"], 300);
-        assert_eq!(body["reasoning"], json!({ "effort": "none" }));
+        assert_eq!(body["max_tokens"], 1000);
+        // Never "none": the free router can pick a model whose reasoning is mandatory, which 400s on "none".
+        assert_eq!(body["reasoning"], json!({ "effort": "low", "exclude": true }));
         for k in ["temperature", "top_p", "top_k", "system", "thinking", "stream"] {
             assert!(body.get(k).is_none(), "{k}");
         }
@@ -998,8 +1002,8 @@ mod tests {
         let sent: Value = serde_json::from_str(&raw[json_start..]).unwrap();
         assert_eq!(sent, body);
         assert_eq!(sent["model"], "openai/gpt-5-mini");
-        assert_eq!(sent["max_tokens"], 300);
-        assert_eq!(sent["reasoning"]["effort"], "none");
+        assert_eq!(sent["max_tokens"], 1000);
+        assert_eq!(sent["reasoning"], serde_json::json!({ "effort": "low", "exclude": true }));
         assert_eq!(sent["messages"][0]["role"], "system");
         assert_eq!(sent["messages"][3], json!({ "role": "user", "content": "Hi" }));
     }
