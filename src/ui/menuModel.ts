@@ -3,8 +3,8 @@ import type { IntervalMin } from '../agent/hydration';
 import { FOCUS_OPTIONS } from '../agent/focus';
 import { STRETCH_OPTIONS } from '../agent/stretch';
 import type { StretchMin } from '../agent/stretch';
-import { FREE_MODEL, PAID_HAIKU_MODEL, isPresetModel } from '../agent/ask';
-import type { AskModel, AskProvider, ClaudeModel } from '../agent/ask';
+import { FREE_MODEL, GROQ_FAST_MODEL, GROQ_SMART_MODEL, PAID_HAIKU_MODEL, isPresetGroqModel, isPresetModel } from '../agent/ask';
+import type { AskModel, AskProvider, ClaudeModel, GroqModel } from '../agent/ask';
 import type { Style } from '../art/style';
 import type { MenuItem } from './contextMenu';
 
@@ -22,7 +22,7 @@ export interface MenuState {
   focusLeft: number | null; // whole minutes left while a focus session runs
   calendarSupported: boolean; // macOS only
   meetingHeadsUp: boolean;
-  ask: { keySet: boolean; provider: AskProvider; model: AskModel; claudeModel: ClaudeModel };
+  ask: { keySet: boolean; provider: AskProvider; model: AskModel; groqModel: GroqModel; claudeModel: ClaudeModel };
 }
 
 /**
@@ -43,11 +43,18 @@ export function buildMenu(s: MenuState): MenuItem[] {
       id: 'ask', label: 'Ask Paperclip',
       children: [
         { id: 'ask-open', label: 'Ask a question…' },
-        { id: 'ask-provider-openrouter', label: 'OpenRouter', role: 'radio' as const, checked: s.ask.provider !== 'anthropic', separatorBefore: true },
+        { id: 'ask-provider-openrouter', label: 'OpenRouter', role: 'radio' as const, checked: s.ask.provider !== 'anthropic' && s.ask.provider !== 'groq', separatorBefore: true },
+        { id: 'ask-provider-groq', label: 'Groq', role: 'radio' as const, checked: s.ask.provider === 'groq' },
         { id: 'ask-provider-anthropic', label: 'Claude (Anthropic)', role: 'radio' as const, checked: s.ask.provider === 'anthropic' },
-        { id: 'ask-key', label: s.ask.provider === 'anthropic' ? 'Set Claude API key…' : 'Set OpenRouter API key…', separatorBefore: true },
+        { id: 'ask-key', label: s.ask.provider === 'anthropic' ? 'Set Claude API key…' : s.ask.provider === 'groq' ? 'Set Groq API key…' : 'Set OpenRouter API key…', separatorBefore: true },
         ...(s.ask.keySet ? [{ id: 'ask-remove', label: 'Remove API key' }] : []),
-        ...(s.ask.provider === 'anthropic'
+        ...(s.ask.provider === 'groq'
+          ? [
+              { id: 'ask-groq-fast', label: 'Fast answers (Llama 3.3 70B)', role: 'radio' as const, checked: s.ask.groqModel === GROQ_FAST_MODEL, separatorBefore: true },
+              { id: 'ask-groq-smart', label: 'Smarter answers (GPT-OSS 120B)', role: 'radio' as const, checked: s.ask.groqModel === GROQ_SMART_MODEL },
+              { id: 'ask-groq-other', label: isPresetGroqModel(s.ask.groqModel) ? 'Other model…' : s.ask.groqModel, role: 'radio' as const, checked: !isPresetGroqModel(s.ask.groqModel) },
+            ]
+          : s.ask.provider === 'anthropic'
           ? [
               { id: 'ask-claude-haiku', label: 'Fast answers (Haiku)', role: 'radio' as const, checked: s.ask.claudeModel !== 'claude-sonnet-5-5', separatorBefore: true },
               { id: 'ask-claude-sonnet', label: 'Smarter answers (Sonnet)', role: 'radio' as const, checked: s.ask.claudeModel === 'claude-sonnet-5-5' },

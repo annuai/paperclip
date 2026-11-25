@@ -1,4 +1,4 @@
-//! Ask Paperclip: one short question to a model on OpenRouter (default) or to Claude via the Anthropic API,
+//! Ask Paperclip: one short question to a model on OpenRouter (default), on Groq, or to Claude via the Anthropic API,
 //! answered in the balloon.
 //!
 //! Security shape (same idea as `files.rs`): each provider's API key lives ONLY in the OS keychain (one account per provider) and is read here, in Rust,
@@ -14,7 +14,17 @@ use std::time::Duration;
 const KEYCHAIN_SERVICE: &str = "app.paperclip.desktop";
 const OPENROUTER_ACCOUNT: &str = "openrouter-api-key";
 const ANTHROPIC_ACCOUNT: &str = "anthropic-api-key";
+const GROQ_ACCOUNT: &str = "groq-api-key";
 const API_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
+const GROQ_URL: &str = "https://api.groq.com/openai/v1/chat/completions";
+/// Groq production models (console.groq.com/docs/models). The default is a fast non-reasoning chat model, so no
+/// reasoning params are needed; the menu's "smarter" choice, `openai/gpt-oss-120b`, is a reasoning model and gets
+/// minimal, hidden reasoning (see `build_groq_request`).
+const GROQ_DEFAULT_MODEL: &str = "llama-3.3-70b-versatile";
+/// Tight cap on purpose: the balloon holds ~220 characters (about 60 tokens).
+const GROQ_MAX_TOKENS: u32 = 120;
+/// A reasoning model spends part of `max_tokens` on its (hidden) reasoning, so it gets headroom.
+const GROQ_REASONING_MAX_TOKENS: u32 = 600;
 const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// Server-side refusal fallback (Sonnet 5.5 supports the `"default"` form; Haiku 5.5 has no server-side fallback).
@@ -39,6 +49,7 @@ const MAX_TURN_CHARS: usize = 600;
 const MAX_ANSWER_CHARS: usize = 220;
 const MAX_KEY_LEN_OPENROUTER: usize = 400;
 const MAX_KEY_LEN_ANTHROPIC: usize = 512;
+const MAX_KEY_LEN_GROQ: usize = 512;
 
 const SYSTEM_PROMPT: &str = "You are Paperclip, a cheerful, slightly dorky paperclip who lives on the user's desktop. \
 Answer in 1 to 3 short sentences, under 220 characters in total, because your speech balloon is tiny. \
@@ -48,33 +59,37 @@ Be warm and a little playful, but get the answer right. If a question needs a lo
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provider {
     OpenRouter,
+    Groq,
     Anthropic,
 }
 
 impl Provider {
-    /// Anything but "anthropic" is OpenRouter (the default).
+    /// Anything but "anthropic" or "groq" is OpenRouter (the default).
     fn parse(s: Option<&str>) -> Self {
-        if s == Some("anthropic") {
-            Provider::Anthropic
-        } else {
-            Provider::OpenRouter
+        match s {
+            Some("anthropic") => Provider::Anthropic,
+            Some("groq") => Provider::Groq,
+            _ => Provider::OpenRouter,
         }
     }
     fn account(self) -> &'static str {
         match self {
             Provider::OpenRouter => OPENROUTER_ACCOUNT,
+            Provider::Groq => GROQ_ACCOUNT,
             Provider::Anthropic => ANTHROPIC_ACCOUNT,
         }
     }
     fn name(self) -> &'static str {
         match self {
             Provider::OpenRouter => "OpenRouter",
+            Provider::Groq => "Groq",
             Provider::Anthropic => "Claude",
         }
     }
     fn max_key_len(self) -> usize {
         match self {
             Provider::OpenRouter => MAX_KEY_LEN_OPENROUTER,
+            Provider::Groq => MAX_KEY_LEN_GROQ,
             Provider::Anthropic => MAX_KEY_LEN_ANTHROPIC,
         }
     }
@@ -97,6 +112,7 @@ pub enum FailureKind {
     Overloaded,
     Offline,
     Timeout,
+    TooLong,
     Refused,
     Empty,
     Other,
@@ -130,6 +146,33 @@ pub fn valid_model_id(id: &str) -> bool {
     let vendor_ok = !vendor.is_empty() && vendor.bytes().all(|b| b.is_ascii_alphanumeric() || b"._~-".contains(&b));
     let name_ok = !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b"._:~-".contains(&b));
     vendor_ok && name_ok
+}
+
+/// A Groq model id: `llama-3.3-70b-versatile`, or with a vendor prefix such as `openai/gpt-oss-20b`.
+/// `^[A-Za-z0-9][A-Za-z0-9._~-]*(/[A-Za-z0-9._:~-]+)?$`, at most 100 characters.
+pub fn valid_groq_model_id(id: &str) -> bool {
+    if id.is_empty() || id.len() > MAX_MODEL_ID_LEN {
+        return false;
+    }
+    let (head, tail) = match id.split_once('/') {
+        Some((h, t)) => (h, Some(t)),
+        None => (id, None),
+    };
+    let head_ok = head.bytes().next().is_some_and(|b| b.is_ascii_alphanumeric()) && head.bytes().all(|b| b.is_ascii_alphanumeric() || b"._~-".contains(&b));
+    let tail_ok = tail.is_none_or(|t| !t.is_empty() && t.bytes().all(|b| b.is_ascii_alphanumeric() || b"._:~-".contains(&b)));
+    head_ok && tail_ok
+}
+
+fn resolve_groq_model(requested: Option<&str>) -> &str {
+    match requested {
+        Some(m) if valid_groq_model_id(m) => m,
+        _ => GROQ_DEFAULT_MODEL,
+    }
+}
+
+/// The gpt-oss models are Groq's reasoning models; the only ones that get (and accept) the reasoning params.
+fn is_groq_reasoning_model(model: &str) -> bool {
+    model.starts_with("openai/gpt-oss-")
 }
 
 /// The two Claude models of the Anthropic path; anything else becomes Haiku.
@@ -201,6 +244,29 @@ pub fn build_openrouter_request(model: Option<&str>, history: &[Turn], question:
     });
     if model == DEFAULT_MODEL {
         body["models"] = json!([DEFAULT_MODEL, FREE_ROUTER]);
+    }
+    body
+}
+
+/// The Groq (OpenAI-compatible) JSON body. The system prompt is the first message.
+///
+/// Non-reasoning models (the default Llama) get only `max_tokens: 120`. The gpt-oss reasoning models get
+/// `reasoning_effort: "low"` and `include_reasoning: false` (Groq: gpt-oss rejects `reasoning_format`, and the two
+/// are mutually exclusive) plus more token headroom, because reasoning tokens count against `max_tokens`.
+/// Other models never get reasoning params (they may reject them). No sampling params, no `n`, no `logprobs`.
+pub fn build_groq_request(model: Option<&str>, history: &[Turn], question: &str) -> Value {
+    let mut messages = vec![json!({ "role": "system", "content": SYSTEM_PROMPT })];
+    messages.extend(build_messages(history, question));
+    let model = resolve_groq_model(model);
+    let reasoning = is_groq_reasoning_model(model);
+    let mut body = json!({
+        "model": model,
+        "messages": messages,
+        "max_tokens": if reasoning { GROQ_REASONING_MAX_TOKENS } else { GROQ_MAX_TOKENS },
+    });
+    if reasoning {
+        body["reasoning_effort"] = json!("low");
+        body["include_reasoning"] = json!(false);
     }
     body
 }
@@ -335,6 +401,30 @@ fn http_failure(status: u16, model: &str) -> AskFailure {
     }
 }
 
+/// Groq's statuses (console.groq.com/docs/errors). `retry_after` is the 429 header in seconds, when present.
+fn groq_http_failure(status: u16, retry_after: Option<u64>) -> AskFailure {
+    match status {
+        401 => failure(FailureKind::Unauthorized, "Groq didn't accept my API key. It may be mistyped or revoked. Want to enter it again?"),
+        403 => failure(FailureKind::Refused, "Groq wouldn't let that key do this. Check your Groq account, or try another model."),
+        408 => failure(FailureKind::Timeout, "Groq took too long to answer, so I gave up waiting. Try again?"),
+        413 => failure(FailureKind::TooLong, "That question is too long for Groq. Try a shorter one?"),
+        429 => {
+            let wait = match retry_after {
+                Some(1) => "1 second".to_string(),
+                Some(n) => format!("{n} seconds"),
+                None => "a minute".to_string(),
+            };
+            failure(FailureKind::RateLimited, &format!("Groq's free tier needs a breather. Try again in {wait}."))
+        }
+        400 | 404 => failure(FailureKind::BadModel, "Groq doesn't know that model, or won't take my question. Check the model in the menu."),
+        498 | 500..=599 => failure(FailureKind::Overloaded, "Groq is busy right now. Ask me again in a moment."),
+        _ => AskFailure {
+            kind: FailureKind::Other,
+            message: format!("Something went wrong when I asked Groq (error {status}). Try again later."),
+        },
+    }
+}
+
 fn anthropic_http_failure(status: u16) -> AskFailure {
     match status {
         401 | 403 => failure(FailureKind::Unauthorized, "Claude didn't accept my API key. It may be mistyped or revoked. Want to enter it again?"),
@@ -417,6 +507,29 @@ pub fn parse_openrouter(status: u16, body: &str, model: &str) -> Result<String, 
     Ok(answer)
 }
 
+/// Maps a Groq HTTP status, its `retry-after` seconds and body to a tidy answer or a friendly failure.
+/// The body is never echoed.
+pub fn parse_groq(status: u16, retry_after: Option<u64>, body: &str) -> Result<String, AskFailure> {
+    if !(200..300).contains(&status) {
+        return Err(groq_http_failure(status, retry_after));
+    }
+    let v: Value = serde_json::from_str(body)
+        .map_err(|_| failure(FailureKind::Other, "Groq sent me something I couldn't read. Try again?"))?;
+    let text = v
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|c| c.first())
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .map(content_text)
+        .unwrap_or_default();
+    let answer = tidy_answer(&text);
+    if answer.is_empty() {
+        return Err(failure(FailureKind::Empty, "Groq sent back a blank reply. Try asking a different way?"));
+    }
+    Ok(answer)
+}
+
 fn transport_failure(provider: Provider, e: &reqwest::Error) -> AskFailure {
     let name = provider.name();
     if e.is_timeout() {
@@ -458,6 +571,28 @@ async fn send_openrouter(url: &str, key: &str, body: &Value) -> Result<String, A
     let status = resp.status().as_u16();
     let text = resp.text().await.map_err(|e| transport_failure(Provider::OpenRouter, &e))?;
     parse_openrouter(status, &text, body["model"].as_str().unwrap_or(DEFAULT_MODEL))
+}
+
+async fn send_groq(url: &str, key: &str, body: &Value) -> Result<String, AskFailure> {
+    let mut auth = reqwest::header::HeaderValue::from_str(&format!("Bearer {key}")).map_err(|_| damaged_key())?;
+    auth.set_sensitive(true); // never shown by Debug
+    let resp = build_client(Provider::Groq)?
+        .post(url)
+        .header(reqwest::header::AUTHORIZATION, auth)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| transport_failure(Provider::Groq, &e))?;
+    let status = resp.status().as_u16();
+    let retry_after = resp
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|s| s.is_finite() && *s >= 0.0)
+        .map(|s| s.ceil() as u64);
+    let text = resp.text().await.map_err(|e| transport_failure(Provider::Groq, &e))?;
+    parse_groq(status, retry_after, &text)
 }
 
 async fn send_anthropic(url: &str, key: &str, body: &Value, fallback_beta: bool) -> Result<String, AskFailure> {
@@ -536,7 +671,7 @@ pub async fn ask_remove_key(provider: Option<String>) -> Result<(), String> {
 }
 
 /// Sends one question (plus the in-memory history JS holds) to the active provider and returns the tidy answer.
-/// `model` is an OpenRouter model id, or one of the two Claude ids when the provider is Anthropic.
+/// `model` is an OpenRouter or Groq model id, or one of the two Claude ids when the provider is Anthropic.
 #[tauri::command]
 pub async fn ask(question: String, history: Vec<Turn>, model: Option<String>, provider: Option<String>) -> Result<String, AskFailure> {
     let question = question.trim().to_string();
@@ -549,6 +684,10 @@ pub async fn ask(question: String, history: Vec<Turn>, model: Option<String>, pr
         Provider::OpenRouter => {
             let body = build_openrouter_request(model.as_deref(), &history, &question);
             send_openrouter(API_URL, &key, &body).await
+        }
+        Provider::Groq => {
+            let body = build_groq_request(model.as_deref(), &history, &question);
+            send_groq(GROQ_URL, &key, &body).await
         }
         Provider::Anthropic => {
             let (body, beta) = build_anthropic_request(model.as_deref(), &history, &question);
@@ -954,6 +1093,11 @@ mod tests {
     // ---- the HTTP path against a local stub (no network, fake key) ----
 
     fn stub(status_line: &'static str, body: String) -> (String, std::thread::JoinHandle<String>) {
+        stub_with_headers(status_line, "", body)
+    }
+
+    /// `extra` is raw header lines, each ending in `\r\n` (e.g. `Retry-After: 7\r\n`).
+    fn stub_with_headers(status_line: &'static str, extra: &'static str, body: String) -> (String, std::thread::JoinHandle<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/api/v1/chat/completions", listener.local_addr().unwrap());
         let handle = std::thread::spawn(move || {
@@ -978,7 +1122,7 @@ mod tests {
                     break;
                 }
             }
-            let resp = format!("HTTP/1.1 {status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            let resp = format!("HTTP/1.1 {status_line}\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
             s.write_all(resp.as_bytes()).unwrap();
             String::from_utf8_lossy(&got).to_string()
         });
@@ -1028,6 +1172,213 @@ mod tests {
     fn a_key_with_header_breaking_bytes_never_reaches_the_wire() {
         let e = tauri::async_runtime::block_on(send("http://127.0.0.1:9/", "bad\nkey", &build_request(None, &[], "Hi"))).unwrap_err();
         assert_eq!(e.kind, FailureKind::Unauthorized);
+    }
+
+    // ---- Groq path ----
+
+    fn groq_ok(text: &str) -> String {
+        json!({ "id": "x", "object": "chat.completion", "choices": [{ "index": 0, "finish_reason": "stop", "message": { "role": "assistant", "content": text } }] }).to_string()
+    }
+
+    #[test]
+    fn groq_default_request_is_tight_and_has_no_reasoning_params() {
+        let body = build_groq_request(None, &[], "What is Rust?");
+        assert_eq!(body["model"], "llama-3.3-70b-versatile");
+        assert_eq!(body["max_tokens"], 120);
+        for k in ["reasoning_effort", "reasoning_format", "include_reasoning", "reasoning", "temperature", "top_p", "n", "stream", "logprobs", "models", "system"] {
+            assert!(body.get(k).is_none(), "{k}");
+        }
+        let msgs = body["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0]["role"], "system");
+        assert!(msgs[0]["content"].as_str().unwrap().contains("1 to 3 short sentences"));
+        assert_eq!(msgs[1], json!({ "role": "user", "content": "What is Rust?" }));
+    }
+
+    #[test]
+    fn groq_gpt_oss_gets_low_hidden_reasoning_and_more_headroom_but_never_reasoning_format() {
+        for id in ["openai/gpt-oss-120b", "openai/gpt-oss-20b"] {
+            let body = build_groq_request(Some(id), &[], "Hi");
+            assert_eq!(body["model"], id);
+            assert_eq!(body["max_tokens"], 600);
+            assert_eq!(body["reasoning_effort"], "low");
+            assert_eq!(body["include_reasoning"], false);
+            assert!(body.get("reasoning_format").is_none() && body.get("reasoning").is_none(), "{id}");
+        }
+    }
+
+    #[test]
+    fn groq_other_models_never_get_reasoning_params() {
+        for id in ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3-32b"] {
+            let body = build_groq_request(Some(id), &[], "Hi");
+            assert_eq!(body["model"], id);
+            assert_eq!(body["max_tokens"], 120);
+            assert!(body.get("reasoning_effort").is_none() && body.get("include_reasoning").is_none() && body.get("reasoning_format").is_none(), "{id}");
+        }
+    }
+
+    #[test]
+    fn groq_invalid_model_ids_fall_back_to_the_default() {
+        for id in ["", "a b", "a/b/c", "/b", "a/", "-x", "evil\"x", "a/b\nc", "ü", "a/ü"] {
+            assert_eq!(build_groq_request(Some(id), &[], "Hi")["model"], "llama-3.3-70b-versatile", "{id:?}");
+        }
+        assert_eq!(build_groq_request(Some(&"b".repeat(101)), &[], "Hi")["model"], "llama-3.3-70b-versatile");
+    }
+
+    #[test]
+    fn groq_model_id_validation() {
+        for ok in ["llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-3.1-8b-instant", "a", "meta-llama/llama-4-scout-17b-16e-instruct", "x~y/z_1:free"] {
+            assert!(valid_groq_model_id(ok), "{ok}");
+        }
+        assert!(valid_groq_model_id(&"b".repeat(100)));
+        assert!(!valid_groq_model_id(&"b".repeat(101)));
+        for bad in ["", "a b", "a/b/c", "/b", "a/", ".x", "a:b/c", "a/b c", "a\n"] {
+            assert!(!valid_groq_model_id(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn groq_responses_parse_and_hidden_reasoning_never_shows() {
+        assert_eq!(parse_groq(200, None, &groq_ok("Paris, of course.")).unwrap(), "Paris, of course.");
+        let body = json!({ "choices": [{ "message": { "content": "Answer.", "reasoning": "secret thoughts" } }] }).to_string();
+        assert_eq!(parse_groq(200, None, &body).unwrap(), "Answer.");
+        assert_eq!(parse_groq(200, None, &groq_ok("  ")).unwrap_err().kind, FailureKind::Empty);
+        assert_eq!(parse_groq(200, None, "{\"choices\":[]}").unwrap_err().kind, FailureKind::Empty);
+        assert_eq!(parse_groq(200, None, "not json").unwrap_err().kind, FailureKind::Other);
+        assert!(parse_groq(200, None, "not json").unwrap_err().message.starts_with("Groq"));
+    }
+
+    #[test]
+    fn groq_statuses_map_to_friendly_kinds() {
+        let kind = |s| parse_groq(s, None, "{}").unwrap_err().kind;
+        assert_eq!(kind(401), FailureKind::Unauthorized);
+        assert_eq!(kind(403), FailureKind::Refused);
+        assert_eq!(kind(408), FailureKind::Timeout);
+        assert_eq!(kind(413), FailureKind::TooLong);
+        assert_eq!(kind(429), FailureKind::RateLimited);
+        assert_eq!(kind(400), FailureKind::BadModel);
+        assert_eq!(kind(404), FailureKind::BadModel);
+        assert_eq!(kind(498), FailureKind::Overloaded);
+        assert_eq!(kind(500), FailureKind::Overloaded);
+        assert_eq!(kind(502), FailureKind::Overloaded);
+        assert_eq!(kind(503), FailureKind::Overloaded);
+        assert_eq!(kind(422), FailureKind::Other);
+        assert!(parse_groq(422, None, "{}").unwrap_err().message.contains("422"));
+        assert!(parse_groq(401, None, "{}").unwrap_err().message.starts_with("Groq didn't accept my API key"));
+        assert!(parse_groq(413, None, "{}").unwrap_err().message.contains("too long"));
+        assert!(parse_groq(498, None, "{}").unwrap_err().message.contains("busy"));
+        assert!(parse_groq(400, None, "{}").unwrap_err().message.contains("model"));
+    }
+
+    #[test]
+    fn groq_429_mentions_retry_after_in_seconds_when_present() {
+        assert_eq!(parse_groq(429, None, "{}").unwrap_err().message, "Groq's free tier needs a breather. Try again in a minute.");
+        assert_eq!(parse_groq(429, Some(17), "{}").unwrap_err().message, "Groq's free tier needs a breather. Try again in 17 seconds.");
+        assert_eq!(parse_groq(429, Some(1), "{}").unwrap_err().message, "Groq's free tier needs a breather. Try again in 1 second.");
+    }
+
+    #[test]
+    fn groq_failures_never_echo_the_body_or_mention_other_providers() {
+        for s in [400, 401, 403, 413, 429, 498, 500, 503, 418] {
+            let m = parse_groq(s, None, "{\"error\":{\"message\":\"bad key gsk_SECRET\"}}").unwrap_err().message;
+            assert!(!m.contains("SECRET") && !m.contains("OpenRouter") && !m.contains("Claude"), "{s}: {m}");
+            assert!(m.contains("Groq"), "{s}: {m}");
+        }
+    }
+
+    #[test]
+    fn groq_sends_bearer_auth_and_the_documented_body_and_nothing_provider_specific() {
+        let (url, seen) = stub("200 OK", groq_ok("Hello there."));
+        let body = build_groq_request(Some("openai/gpt-oss-120b"), &[turn("user", "earlier"), turn("assistant", "reply")], "Hi");
+        assert_eq!(tauri::async_runtime::block_on(send_groq(&url, "gsk_test-key-123", &body)).unwrap(), "Hello there.");
+        let raw = seen.join().unwrap();
+        let req = raw.to_ascii_lowercase();
+        assert!(req.starts_with("post /api/v1/chat/completions")); // the stub's path, not the real one
+        assert!(req.contains("authorization: bearer gsk_test-key-123"));
+        assert!(req.contains("content-type: application/json"));
+        assert!(!req.contains("x-api-key") && !req.contains("anthropic") && !req.contains("http-referer") && !req.contains("x-title"));
+        let json_start = raw.find("\r\n\r\n").unwrap() + 4;
+        let sent: Value = serde_json::from_str(&raw[json_start..]).unwrap();
+        assert_eq!(sent, body);
+        assert_eq!(sent["max_tokens"], 600);
+        assert_eq!(sent["reasoning_effort"], "low");
+        assert_eq!(sent["include_reasoning"], false);
+        assert_eq!(sent["messages"][3], json!({ "role": "user", "content": "Hi" }));
+    }
+
+    #[test]
+    fn groq_failures_over_the_wire() {
+        let body = build_groq_request(None, &[], "Hi");
+        for (line, kind) in [
+            ("401 Unauthorized", FailureKind::Unauthorized),
+            ("413 Payload Too Large", FailureKind::TooLong),
+            ("498 Flex Capacity", FailureKind::Overloaded),
+            ("503 Service Unavailable", FailureKind::Overloaded),
+            ("404 Not Found", FailureKind::BadModel),
+        ] {
+            let (url, _h) = stub(line, "{\"error\":{\"message\":\"x\",\"type\":\"invalid_request_error\"}}".to_string());
+            assert_eq!(tauri::async_runtime::block_on(send_groq(&url, "k", &body)).unwrap_err().kind, kind, "{line}");
+        }
+    }
+
+    #[test]
+    fn groq_429_over_the_wire_reads_the_retry_after_header() {
+        let body = build_groq_request(None, &[], "Hi");
+        let (url, _h) = stub_with_headers("429 Too Many Requests", "Retry-After: 7\r\n", "{\"error\":{\"message\":\"x\"}}".to_string());
+        let e = tauri::async_runtime::block_on(send_groq(&url, "k", &body)).unwrap_err();
+        assert_eq!(e.kind, FailureKind::RateLimited);
+        assert!(e.message.contains("7 seconds"), "{}", e.message);
+        let (url, _h) = stub("429 Too Many Requests", "{}".to_string());
+        assert!(tauri::async_runtime::block_on(send_groq(&url, "k", &body)).unwrap_err().message.contains("a minute"));
+    }
+
+    #[test]
+    fn groq_offline_and_damaged_key() {
+        let body = build_groq_request(None, &[], "Hi");
+        let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let e = tauri::async_runtime::block_on(send_groq(&format!("http://127.0.0.1:{port}/"), "k", &body)).unwrap_err();
+        assert_eq!(e.kind, FailureKind::Offline);
+        assert!(e.message.contains("Groq"));
+        let e = tauri::async_runtime::block_on(send_groq("http://127.0.0.1:9/", "bad\nkey", &body)).unwrap_err();
+        assert_eq!(e.kind, FailureKind::Unauthorized);
+    }
+
+    #[test]
+    fn groq_provider_account_name_and_keys() {
+        assert_eq!(Provider::parse(Some("groq")), Provider::Groq);
+        assert_eq!(Provider::Groq.account(), "groq-api-key");
+        assert_eq!(Provider::Groq.name(), "Groq");
+        assert!(no_key(Provider::Groq).message.contains("Groq API key"));
+        assert_eq!(validate_key(Provider::Groq, "  gsk_abc123  ").unwrap(), "gsk_abc123");
+        assert!(validate_key(Provider::Groq, "gsk abc").is_err());
+        assert!(validate_key(Provider::Groq, &"k".repeat(512)).is_ok());
+        assert!(validate_key(Provider::Groq, &"k".repeat(513)).is_err());
+        assert_eq!(serde_json::to_value(FailureKind::TooLong).unwrap(), "tooLong");
+        let accounts = [Provider::OpenRouter.account(), Provider::Groq.account(), Provider::Anthropic.account()];
+        assert_eq!(accounts.iter().collect::<std::collections::HashSet<_>>().len(), 3);
+    }
+
+    /// Live smoke test (run by hand): a deliberately invalid key must give a 401 from the real Groq API,
+    /// mapped to the bad-key message. `cargo test --lib live_groq_invalid_key -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn live_groq_invalid_key_is_a_401_unauthorized() {
+        let body = build_groq_request(None, &[], "Say hi.");
+        let fake = &format!("gsk_{}", "0".repeat(52));
+        let client = reqwest::Client::new();
+        let (status, text) = tauri::async_runtime::block_on(async {
+            let r = client.post(GROQ_URL).header("Authorization", format!("Bearer {fake}")).json(&body).send().await.unwrap();
+            (r.status().as_u16(), r.text().await.unwrap())
+        });
+        println!("LIVE GROQ status={status} body={text}");
+        assert_eq!(status, 401);
+        let e = parse_groq(status, None, &text).unwrap_err();
+        assert_eq!(e.kind, FailureKind::Unauthorized);
+        assert!(e.message.starts_with("Groq didn't accept my API key"));
+        // and through the real send_groq() path
+        let e2 = tauri::async_runtime::block_on(send_groq(GROQ_URL, fake, &body)).unwrap_err();
+        assert_eq!(e2.kind, FailureKind::Unauthorized);
+        assert!(e2.message.starts_with("Groq didn't accept my API key"));
     }
 
     /// Live smoke test (run by hand): a deliberately invalid key must give a 401 from the real OpenRouter,

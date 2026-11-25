@@ -8,9 +8,9 @@ import { HydrationScheduler } from './agent/hydration';
 import type { IntervalMin } from './agent/hydration';
 import { DEFAULT_SLEEP, SleepController } from './agent/sleep';
 import { Presence } from './agent/presence';
-import { AskFlow, AskHistory, FREE_MODEL, PAID_HAIKU_MODEL, providerName } from './agent/ask';
+import { AskFlow, AskHistory, FREE_MODEL, GROQ_FAST_MODEL, GROQ_SMART_MODEL, PAID_HAIKU_MODEL, providerName } from './agent/ask';
 import { UpdateFlow } from './agent/updates';
-import type { AskLine, AskModel, AskProvider, ClaudeModel } from './agent/ask';
+import type { AskLine, AskModel, AskProvider, ClaudeModel, GroqModel } from './agent/ask';
 import { FocusTimer, focusLabel } from './agent/focus';
 import { MeetingAlerts, meetingLine } from './agent/meeting';
 import type { CalEvent } from './agent/meeting';
@@ -62,6 +62,7 @@ async function boot(): Promise<void> {
   let outfitSetting = settings.outfits;
   let askModel: AskModel = settings.askModel; // the OpenRouter model id
   let askClaudeModel: ClaudeModel = settings.askClaudeModel;
+  let askGroqModel: GroqModel = settings.askGroqModel;
   let askProvider: AskProvider = settings.askProvider;
   let askIntroSeen = settings.askIntroSeen;
   let askKeySet = false; // whether the keychain holds a key (JS can ask, never read it); filled in below at boot
@@ -428,6 +429,7 @@ async function boot(): Promise<void> {
       outfits: outfitSetting === 'auto',
       askKey: askKeySet,
       askModel,
+      askGroqModel,
       askProvider,
       askClaudeModel,
     });
@@ -487,7 +489,14 @@ async function boot(): Promise<void> {
   // ---- Ask Paperclip: the conversation logic is agent/ask.ts; this only supplies the pieces it needs ----
   // Lines may say {provider}: the privacy promise and the key prompt always name the service that is active.
   const askLine = async (k: AskLine): Promise<string> =>
-    (await content.next(`ask${k[0].toUpperCase()}${k.slice(1)}` as ContentKind)).text.replaceAll('{provider}', providerName(askProvider));
+    (await content.next(`ask${k[0].toUpperCase()}${k.slice(1)}` as ContentKind)).text.replaceAll('{provider}', providerName(askProvider))
+      .replaceAll('{example}', askProvider === 'groq' ? 'llama-3.3-70b-versatile' : 'openai/gpt-5-mini')
+      .replaceAll('{shape}', askProvider === 'groq' ? 'llama-3.3-70b-versatile or openai/gpt-oss-20b' : 'vendor/model-name');
+  const setGroqModel = (id: GroqModel) => {
+    askGroqModel = id;
+    void saveSettings({ askGroqModel });
+    sync();
+  };
   const setAskModel = (id: AskModel) => {
     askModel = id;
     void saveSettings({ askModel });
@@ -498,7 +507,7 @@ async function boot(): Promise<void> {
     void saveSettings({ askClaudeModel });
     sync();
   };
-  const activeModel = (): string => (askProvider === 'anthropic' ? askClaudeModel : askModel);
+  const activeModel = (): string => (askProvider === 'anthropic' ? askClaudeModel : askProvider === 'groq' ? askGroqModel : askModel);
   /** Switching provider: each has its own key, so the key state is re-read, and the chat is forgotten (new recipient). */
   const setAskProvider = (p: AskProvider) => {
     if (p === askProvider) { sync(); return; }
@@ -531,7 +540,8 @@ async function boot(): Promise<void> {
         return ok;
       },
       removeKey: async () => { await askRemoveKey(askProvider); askKeySet = false; sync(); },
-      setModel: (id) => setAskModel(id),
+      setModel: (id) => (askProvider === 'groq' ? setGroqModel(id) : setAskModel(id)),
+      provider: () => askProvider,
       epoch: () => agent.epoch,
     },
     new AskHistory(),
@@ -592,7 +602,7 @@ async function boot(): Promise<void> {
   async function runCommand(id: string, checked?: boolean): Promise<void> {
     try {
       const settingOnly = ['nap', 'tray-click', 'style-classic', 'style-flat', 'quit', 'hide', 'toggle', 'quiet', 'greet', 'meeting', 'focus-stop', 'stretch-enabled', 'style-outfits'].includes(id)
-        || id.startsWith('water-') || id.startsWith('ask-model-') || id.startsWith('presence-') || (id.startsWith('stretch-') && id !== 'stretch-now');
+        || id.startsWith('water-') || id.startsWith('ask-model-') || id.startsWith('ask-groq-') || id.startsWith('presence-') || (id.startsWith('stretch-') && id !== 'stretch-now');
       if (sleep.sleeping && !settingOnly) await sleep.wake('command');
       switch (id) {
         case 'style-classic':
@@ -625,15 +635,21 @@ async function boot(): Promise<void> {
         case 'ask-model-haiku':
           setAskModel(PAID_HAIKU_MODEL);
           return;
+        case 'ask-groq-fast':
+        case 'ask-groq-smart':
+          setGroqModel(id === 'ask-groq-smart' ? GROQ_SMART_MODEL : GROQ_FAST_MODEL);
+          return;
         case 'ask-claude-haiku':
         case 'ask-claude-sonnet':
           setClaudeModel(id === 'ask-claude-sonnet' ? 'claude-sonnet-5-5' : 'claude-haiku-5-5');
           return;
         case 'ask-provider-openrouter':
+        case 'ask-provider-groq':
         case 'ask-provider-anthropic':
-          setAskProvider(id === 'ask-provider-anthropic' ? 'anthropic' : 'openrouter');
+          setAskProvider(id === 'ask-provider-anthropic' ? 'anthropic' : id === 'ask-provider-groq' ? 'groq' : 'openrouter');
           return;
         case 'ask-model-other':
+        case 'ask-groq-other':
           if (agent.hidden) await showNow();
           user();
           await ask.chooseModel();
@@ -775,7 +791,7 @@ async function boot(): Promise<void> {
     focusLeft: focusLeft(),
     calendarSupported: calendarOk,
     meetingHeadsUp,
-    ask: { keySet: askKeySet, provider: askProvider, model: askModel, claudeModel: askClaudeModel },
+    ask: { keySet: askKeySet, provider: askProvider, model: askModel, groqModel: askGroqModel, claudeModel: askClaudeModel },
   });
 
   // Throwing: rAF runs only while he is flying (see agent/thrower.ts). Physics are in physical px on the monitor he is on.
@@ -852,6 +868,12 @@ async function boot(): Promise<void> {
         if (sleep.sleeping) { void sleep.wake('doubleClick'); return; }
         user();
         void speakKind('quote');
+      },
+      openAsk: () => {
+        menu.close(); // in case a menu from an earlier right click is still open
+        if (sleep.sleeping) void sleep.wake('doubleClick');
+        user();
+        void ask.ask(); // same as the menu's "Ask a question…"
       },
       contextMenu: (x, y) => {
         scheduler.notifyActivity();

@@ -3,8 +3,10 @@ export interface InteractionHandlers {
   doubleClick(): void;
   /** Three quick clicks on the clip (never the mat). */
   tripleClick(): void;
-  /** Middle mouse button on the clip (never the mat): a quote, at once. */
+  /** Middle mouse button on the clip (never the mat): a quote, once it's clear no second middle click follows. */
   middleClick(): void;
+  /** Two quick middle clicks, or two quick right clicks: open Ask Paperclip. */
+  openAsk(): void;
   contextMenu(x: number, y: number): void;
   dragStart(): void;
   /** A click on the yoga mat (not the clip): bounce. Fires on every tap, no click delay. */
@@ -16,6 +18,10 @@ const onMat = (e: Event): boolean => e.target instanceof Element && e.target.clo
 const DRAG_THRESHOLD = 4;
 /** Clicks closer together than this belong to one gesture; the gesture is decided when it has been quiet this long. */
 const CLICK_DELAY = 250;
+/** A right click waits this long for a second one: two (within RIGHT_DOUBLE_DIST px) open Ask Paperclip,
+ *  one alone opens the menu once the wait is over. */
+const RIGHT_DOUBLE_MS = 400;
+const RIGHT_DOUBLE_DIST = 12;
 
 export function attachInteraction(
   target: HTMLElement,
@@ -29,6 +35,10 @@ export function attachInteraction(
   let midArmed = false; // middle button pressed on the clip; fires on release nearby
   let mx = 0;
   let my = 0;
+  let midTimer: ReturnType<typeof setTimeout> | null = null;
+  let ctxTimer: ReturnType<typeof setTimeout> | null = null;
+  let ctxX = 0;
+  let ctxY = 0;
   let clicks = 0; // our own counter: more predictable than MouseEvent.detail across webviews
 
   const clearClick = () => {
@@ -61,7 +71,15 @@ export function attachInteraction(
     if (e.button === 1) {
       const fire = midArmed && Math.hypot(e.clientX - mx, e.clientY - my) <= DRAG_THRESHOLD;
       midArmed = false;
-      if (fire) { clearClick(); h.middleClick(); }
+      if (!fire) return;
+      clearClick();
+      if (midTimer !== null) { // second middle click in time: Ask Paperclip instead of a quote
+        clearTimeout(midTimer);
+        midTimer = null;
+        h.openAsk();
+        return;
+      }
+      midTimer = setTimeout(() => { midTimer = null; h.middleClick(); }, CLICK_DELAY);
       return;
     }
     if (e.button !== 0 || !armed) return;
@@ -78,10 +96,22 @@ export function attachInteraction(
       else h.doubleClick(); // double click: a joke, after waiting to see whether a third click turns it into a quote
     }, CLICK_DELAY);
   };
+  const clearCtx = () => {
+    if (ctxTimer !== null) { clearTimeout(ctxTimer); ctxTimer = null; }
+  };
   const onCtx = (e: MouseEvent) => {
     e.preventDefault();
     armed = false;
-    h.contextMenu(e.clientX, e.clientY);
+    if (ctxTimer !== null && Math.hypot(e.clientX - ctxX, e.clientY - ctxY) <= RIGHT_DOUBLE_DIST) {
+      clearCtx(); // second right click in time: Ask Paperclip, and the menu never opens
+      clearClick();
+      h.openAsk();
+      return;
+    }
+    clearCtx();
+    ctxX = e.clientX;
+    ctxY = e.clientY;
+    ctxTimer = setTimeout(() => { ctxTimer = null; h.contextMenu(ctxX, ctxY); }, RIGHT_DOUBLE_MS);
   };
   const onBlur = () => { armed = false; midArmed = false; };
 
@@ -92,6 +122,8 @@ export function attachInteraction(
   window.addEventListener('blur', onBlur);
   return () => {
     clearClick();
+    if (midTimer !== null) { clearTimeout(midTimer); midTimer = null; }
+    clearCtx();
     target.removeEventListener('mousedown', onDown);
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);

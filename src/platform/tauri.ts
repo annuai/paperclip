@@ -65,6 +65,7 @@ export interface WellbeingTray {
   outfits: boolean;
   askKey: boolean; // an API key is stored (enables the tray's "Remove API key")
   askModel: string; // the OpenRouter model id
+  askGroqModel: string;
   askProvider: string;
   askClaudeModel: string;
 }
@@ -76,11 +77,11 @@ export async function syncTray(
   water = { enabled: true, intervalMin: 45, glasses: 0 },
   greet = true,
   presence = { hidePresenting: true, music: true },
-  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false, outfits: true, askKey: false, askModel: 'google/gemma-4-31b-it:free', askProvider: 'openrouter', askClaudeModel: 'claude-haiku-5-5' },
+  wellbeing: WellbeingTray = { stretchEnabled: true, stretchInterval: 60, focusLeft: null, meeting: false, outfits: true, askKey: false, askModel: 'google/gemma-4-31b-it:free', askGroqModel: 'llama-3.3-70b-versatile', askProvider: 'openrouter', askClaudeModel: 'claude-haiku-5-5' },
 ): Promise<void> {
   await guard('sync_tray', () =>
     invoke('sync_tray', {
-      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music, stretchEnabled: wellbeing.stretchEnabled, stretchInterval: wellbeing.stretchInterval, focusLeft: wellbeing.focusLeft, meeting: wellbeing.meeting, outfits: wellbeing.outfits, askKey: wellbeing.askKey, askModel: wellbeing.askModel, askProvider: wellbeing.askProvider, askClaudeModel: wellbeing.askClaudeModel },
+      sync: { visible, quiet, asleep, style, waterEnabled: water.enabled, waterInterval: water.intervalMin, glasses: water.glasses, greet, hidePresenting: presence.hidePresenting, reactToMusic: presence.music, stretchEnabled: wellbeing.stretchEnabled, stretchInterval: wellbeing.stretchInterval, focusLeft: wellbeing.focusLeft, meeting: wellbeing.meeting, outfits: wellbeing.outfits, askKey: wellbeing.askKey, askModel: wellbeing.askModel, askGroqModel: wellbeing.askGroqModel, askProvider: wellbeing.askProvider, askClaudeModel: wellbeing.askClaudeModel },
     }),
   );
 }

@@ -1,11 +1,11 @@
 import type { BalloonAction, PromptOpts } from './agent';
 
-/** Which service answers. OpenRouter is the default (it has free models); the Claude API is optional. */
-export type AskProvider = 'openrouter' | 'anthropic';
+/** Which service answers. OpenRouter is the default (it has free models); Groq (free tier, very fast) and the Claude API are optional. */
+export type AskProvider = 'openrouter' | 'groq' | 'anthropic';
 export const DEFAULT_ASK_PROVIDER: AskProvider = 'openrouter';
-export const providerName = (p: AskProvider): string => (p === 'anthropic' ? 'Claude' : 'OpenRouter');
+export const providerName = (p: AskProvider): string => (p === 'anthropic' ? 'Claude' : p === 'groq' ? 'Groq' : 'OpenRouter');
 export function normalizeAskProvider(v: unknown): AskProvider {
-  return v === 'anthropic' ? 'anthropic' : DEFAULT_ASK_PROVIDER;
+  return v === 'anthropic' || v === 'groq' ? v : DEFAULT_ASK_PROVIDER;
 }
 
 /** An OpenRouter model id such as `google/gemma-4-31b-it:free`. Rust validates with the same pattern. */
@@ -25,6 +25,24 @@ export function normalizeAskModel(v: unknown): AskModel {
 /** True when the OpenRouter model is one of the two presets (otherwise the menu shows it as the custom radio). */
 export const isPresetModel = (m: AskModel): boolean => m === FREE_MODEL || m === PAID_HAIKU_MODEL;
 
+/**
+ * A Groq model id such as `llama-3.3-70b-versatile` or `openai/gpt-oss-20b` (the vendor prefix is optional).
+ * Rust validates with the same pattern.
+ */
+export type GroqModel = string;
+export const GROQ_FAST_MODEL: GroqModel = 'llama-3.3-70b-versatile';
+export const GROQ_SMART_MODEL: GroqModel = 'openai/gpt-oss-120b';
+export const DEFAULT_GROQ_MODEL: GroqModel = GROQ_FAST_MODEL;
+const GROQ_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._~-]*(\/[A-Za-z0-9._:~-]+)?$/;
+export function isValidGroqModelId(v: unknown): v is string {
+  return typeof v === 'string' && v.length <= MAX_MODEL_ID_CHARS && GROQ_MODEL_ID.test(v);
+}
+export function normalizeGroqModel(v: unknown): GroqModel {
+  return isValidGroqModelId(v) ? v : DEFAULT_GROQ_MODEL;
+}
+/** True when the Groq model is one of the two presets (otherwise the menu shows it as the custom radio). */
+export const isPresetGroqModel = (m: GroqModel): boolean => m === GROQ_FAST_MODEL || m === GROQ_SMART_MODEL;
+
 /** The two models of the optional Claude (Anthropic) provider. Rust enforces the same list. */
 export type ClaudeModel = 'claude-haiku-5-5' | 'claude-sonnet-5-5';
 export const CLAUDE_MODELS: ClaudeModel[] = ['claude-haiku-5-5', 'claude-sonnet-5-5'];
@@ -40,7 +58,7 @@ export const MAX_KEY_CHARS = 512;
 
 export interface Turn { role: 'user' | 'assistant'; text: string }
 
-export type FailureKind = 'noKey' | 'unauthorized' | 'outOfCredits' | 'badModel' | 'rateLimited' | 'overloaded' | 'offline' | 'timeout' | 'refused' | 'empty' | 'other';
+export type FailureKind = 'noKey' | 'unauthorized' | 'outOfCredits' | 'badModel' | 'rateLimited' | 'overloaded' | 'offline' | 'timeout' | 'tooLong' | 'refused' | 'empty' | 'other';
 export interface AskFailure { kind: FailureKind; message: string }
 export type AskResult = { ok: true; answer: string } | { ok: false; failure: AskFailure };
 
@@ -76,8 +94,10 @@ export interface AskDeps {
   query(question: string, turns: Turn[]): Promise<AskResult>;
   saveKey(key: string): Promise<boolean>;
   removeKey(): Promise<void>;
-  /** Stores the chosen model id (already validated). */
+  /** Stores the chosen model id (already validated) for the active provider. */
   setModel(id: string): void;
+  /** The active provider (decides which model ids are valid and how the prompt reads). */
+  provider(): AskProvider;
   /** Bumped by the host whenever something else takes over (a click, a hide, another feature). */
   epoch(): number;
 }
@@ -151,7 +171,7 @@ export class AskFlow {
     }
   }
 
-  /** Menu: "Set OpenRouter API key…" on its own (no question afterwards). */
+  /** Menu: "Set <provider> API key…" on its own (no question afterwards). */
   async setKey(): Promise<void> {
     const run = ++this.run;
     const epoch = this.deps.epoch();
@@ -171,18 +191,19 @@ export class AskFlow {
     this.state = 'idle';
   }
 
-  /** Menu: "Other model…". Asks for an OpenRouter model id and stores it when it looks valid. */
+  /** Menu: "Other model…". Asks for a model id of the active provider (OpenRouter or Groq) and stores it when it looks valid. */
   async chooseModel(): Promise<void> {
     const run = ++this.run;
     const epoch = this.deps.epoch();
     const stale = () => run !== this.run || this.deps.epoch() !== epoch;
     try {
       const text = await this.deps.line('modelPrompt');
-      const typed = await this.deps.prompt(text, { secret: false, maxLength: MAX_MODEL_ID_CHARS, placeholder: 'vendor/model-name' });
+      const groq = this.deps.provider() === 'groq';
+      const typed = await this.deps.prompt(text, { secret: false, maxLength: MAX_MODEL_ID_CHARS, placeholder: groq ? 'model-id' : 'vendor/model-name' });
       if (stale()) return;
       const id = typed?.trim() ?? '';
       if (!id) return;
-      if (!isValidModelId(id)) {
+      if (!(groq ? isValidGroqModelId(id) : isValidModelId(id))) {
         await this.deps.say(await this.deps.line('modelInvalid'));
         return;
       }
@@ -205,7 +226,7 @@ export class AskFlow {
     const text = await this.deps.line('keyPrompt');
     // The key prompt already says that only typed text goes to the provider, so it counts as the first-run line too.
     if (!this.deps.introSeen()) this.deps.markIntroSeen();
-    const typed = await this.deps.prompt(text, { secret: true, maxLength: MAX_KEY_CHARS, placeholder: 'Paste your OpenRouter key' });
+    const typed = await this.deps.prompt(text, { secret: true, maxLength: MAX_KEY_CHARS, placeholder: `Paste your ${providerName(this.deps.provider())} key` });
     if (stale()) return false;
     const key = typed?.trim() ?? '';
     if (!key) return false;

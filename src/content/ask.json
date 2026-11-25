@@ -20,10 +20,10 @@
   {"kind": "keyFailed", "text": "I couldn't save that key to your keychain. Try again?"},
   {"kind": "keyFailed", "text": "The keychain wouldn't take the key. Maybe try once more?"},
   {"kind": "keyFailed", "text": "Hmm, that key didn't save. Want to try again?"},
-  {"kind": "modelPrompt", "text": "Type an OpenRouter model id, like openai/gpt-5-mini."},
-  {"kind": "modelPrompt", "text": "Which model? Paste its OpenRouter id, e.g. vendor/model-name."},
+  {"kind": "modelPrompt", "text": "Type the {provider} model id, like {example}."},
+  {"kind": "modelPrompt", "text": "Which model? Paste its {provider} id, e.g. {shape}."},
   {"kind": "modelSaved", "text": "Done! I'll use that model from now on."},
   {"kind": "modelSaved", "text": "Model switched. Ask away!"},
-  {"kind": "modelInvalid", "text": "That doesn't look like a model id. It should be vendor/model-name."},
-  {"kind": "modelInvalid", "text": "Hmm, model ids look like vendor/model-name. Try the menu again?"}
+  {"kind": "modelInvalid", "text": "That doesn't look like a model id. It should be like {shape}."},
+  {"kind": "modelInvalid", "text": "Hmm, model ids look like {shape}. Try the menu again?"}
 ]

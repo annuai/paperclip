@@ -27,15 +27,20 @@ pub struct TrayHandles {
     ask_key: MenuItem<Wry>,
     ask_remove: MenuItem<Wry>,
     ask_provider_openrouter: CheckMenuItem<Wry>,
+    ask_provider_groq: CheckMenuItem<Wry>,
     ask_provider_anthropic: CheckMenuItem<Wry>,
     /// OpenRouter model radios: free default, Claude Haiku (paid), custom id.
     ask_free: CheckMenuItem<Wry>,
     ask_haiku: CheckMenuItem<Wry>,
     ask_other: CheckMenuItem<Wry>,
+    /// Groq model radios: fast default, smarter, custom id.
+    ask_groq_fast: CheckMenuItem<Wry>,
+    ask_groq_smart: CheckMenuItem<Wry>,
+    ask_groq_other: CheckMenuItem<Wry>,
     /// Claude (Anthropic) model radios.
     ask_claude_haiku: CheckMenuItem<Wry>,
     ask_claude_sonnet: CheckMenuItem<Wry>,
-    /// Which provider's model radios are currently in the submenu.
+    /// Which provider's model radios are currently in the submenu (`openrouter`, `groq` or `anthropic`).
     ask_shown: std::sync::Mutex<String>,
 }
 
@@ -56,7 +61,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let ask_key = MenuItem::with_id(app, "ask-key", "Set OpenRouter API key…", true, None::<&str>)?;
     let ask_remove = MenuItem::with_id(app, "ask-remove", "Remove API key", false, None::<&str>)?;
     let ask_provider_openrouter = CheckMenuItem::with_id(app, "ask-provider-openrouter", "OpenRouter", true, true, None::<&str>)?;
+    let ask_provider_groq = CheckMenuItem::with_id(app, "ask-provider-groq", "Groq", true, false, None::<&str>)?;
     let ask_provider_anthropic = CheckMenuItem::with_id(app, "ask-provider-anthropic", "Claude (Anthropic)", true, false, None::<&str>)?;
+    let ask_groq_fast = CheckMenuItem::with_id(app, "ask-groq-fast", "Fast answers (Llama 3.3 70B)", true, true, None::<&str>)?;
+    let ask_groq_smart = CheckMenuItem::with_id(app, "ask-groq-smart", "Smarter answers (GPT-OSS 120B)", true, false, None::<&str>)?;
+    let ask_groq_other = CheckMenuItem::with_id(app, "ask-groq-other", "Other model…", true, false, None::<&str>)?;
     let ask_free = CheckMenuItem::with_id(app, "ask-model-free", "Free (Gemma 4 31B)", true, true, None::<&str>)?;
     let ask_haiku = CheckMenuItem::with_id(app, "ask-model-haiku", "Claude Haiku 5.5 (paid)", true, false, None::<&str>)?;
     let ask_other = CheckMenuItem::with_id(app, "ask-model-other", "Other model…", true, false, None::<&str>)?;
@@ -70,7 +79,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         app,
         "Ask Paperclip",
         true,
-        &[&ask_open, &ask_sep1, &ask_provider_openrouter, &ask_provider_anthropic, &ask_sep2, &ask_key, &ask_remove, &ask_sep3, &ask_free, &ask_haiku, &ask_other],
+        &[&ask_open, &ask_sep1, &ask_provider_openrouter, &ask_provider_groq, &ask_provider_anthropic, &ask_sep2, &ask_key, &ask_remove, &ask_sep3, &ask_free, &ask_haiku, &ask_other],
     )?;
     let style_classic = CheckMenuItem::with_id(app, "style-classic", "Classic", true, true, None::<&str>)?;
     let style_flat = CheckMenuItem::with_id(app, "style-flat", "Flat", true, false, None::<&str>)?;
@@ -177,7 +186,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         ask_key: ask_key.clone(),
         ask_remove: ask_remove.clone(),
         ask_provider_openrouter: ask_provider_openrouter.clone(),
+        ask_provider_groq: ask_provider_groq.clone(),
         ask_provider_anthropic: ask_provider_anthropic.clone(),
+        ask_groq_fast: ask_groq_fast.clone(),
+        ask_groq_smart: ask_groq_smart.clone(),
+        ask_groq_other: ask_groq_other.clone(),
         ask_free: ask_free.clone(),
         ask_haiku: ask_haiku.clone(),
         ask_other: ask_other.clone(),
@@ -265,7 +278,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                     }
                 }
                 // Radios: the frontend decides, then pushes the truth back through `sync_tray` (which sets every check).
-                "ask-provider-openrouter" | "ask-provider-anthropic" | "ask-model-free" | "ask-model-haiku" | "ask-model-other" | "ask-claude-haiku" | "ask-claude-sonnet" => {
+                "ask-provider-openrouter" | "ask-provider-groq" | "ask-provider-anthropic" | "ask-groq-fast" | "ask-groq-smart" | "ask-groq-other" | "ask-model-free" | "ask-model-haiku" | "ask-model-other" | "ask-claude-haiku" | "ask-claude-sonnet" => {
                     let _ = app.emit("tray-action", TrayAction { id: id.to_string(), checked: Some(true) });
                 }
                 "meeting" => {
@@ -326,8 +339,10 @@ pub struct TraySync {
     /// An API key for Ask Paperclip is stored (enables "Remove API key").
     ask_key: bool,
     ask_model: String,
-    /// `"openrouter"` or `"anthropic"`.
+    /// `"openrouter"`, `"groq"` or `"anthropic"`.
     ask_provider: String,
+    /// The Groq provider's model id.
+    ask_groq_model: String,
     /// `claude-haiku-5-5` or `claude-sonnet-5-5` (used by the Anthropic provider).
     ask_claude_model: String,
 }
@@ -363,9 +378,12 @@ pub fn sync_tray(app: AppHandle, state: State<'_, TrayHandles>, sync: TraySync) 
     state.meeting.set_checked(sync.meeting).map_err(|e| e.to_string())?;
     state.ask_remove.set_enabled(sync.ask_key).map_err(|e| e.to_string())?;
     let anthropic = sync.ask_provider == "anthropic";
-    state.ask_provider_openrouter.set_checked(!anthropic).map_err(|e| e.to_string())?;
+    let groq = sync.ask_provider == "groq";
+    state.ask_provider_openrouter.set_checked(!anthropic && !groq).map_err(|e| e.to_string())?;
+    state.ask_provider_groq.set_checked(groq).map_err(|e| e.to_string())?;
     state.ask_provider_anthropic.set_checked(anthropic).map_err(|e| e.to_string())?;
-    state.ask_key.set_text(if anthropic { "Set Claude API key…" } else { "Set OpenRouter API key…" }).map_err(|e| e.to_string())?;
+    let key_label = if anthropic { "Set Claude API key…" } else if groq { "Set Groq API key…" } else { "Set OpenRouter API key…" };
+    state.ask_key.set_text(key_label).map_err(|e| e.to_string())?;
     let free = sync.ask_model == "google/gemma-4-31b-it:free";
     let paid = sync.ask_model == "anthropic/claude-haiku-5.5";
     state.ask_free.set_checked(free).map_err(|e| e.to_string())?;
@@ -374,20 +392,34 @@ pub fn sync_tray(app: AppHandle, state: State<'_, TrayHandles>, sync: TraySync) 
     // The custom id is shown as the third radio's label (the frontend only stores ids of the validated shape).
     let other_label = if free || paid || sync.ask_model.len() > 100 { "Other model…".to_string() } else { sync.ask_model.clone() };
     state.ask_other.set_text(other_label).map_err(|e| e.to_string())?;
+    let g_fast = sync.ask_groq_model == "llama-3.3-70b-versatile";
+    let g_smart = sync.ask_groq_model == "openai/gpt-oss-120b";
+    state.ask_groq_fast.set_checked(g_fast).map_err(|e| e.to_string())?;
+    state.ask_groq_smart.set_checked(g_smart).map_err(|e| e.to_string())?;
+    state.ask_groq_other.set_checked(!g_fast && !g_smart).map_err(|e| e.to_string())?;
+    let g_label = if g_fast || g_smart || sync.ask_groq_model.len() > 100 { "Other model…".to_string() } else { sync.ask_groq_model.clone() };
+    state.ask_groq_other.set_text(g_label).map_err(|e| e.to_string())?;
     state.ask_claude_haiku.set_checked(sync.ask_claude_model != "claude-sonnet-5-5").map_err(|e| e.to_string())?;
     state.ask_claude_sonnet.set_checked(sync.ask_claude_model == "claude-sonnet-5-5").map_err(|e| e.to_string())?;
     // Only the active provider's model radios are in the submenu.
-    let want = if anthropic { "anthropic" } else { "openrouter" };
+    let want = if anthropic { "anthropic" } else if groq { "groq" } else { "openrouter" };
     if let Ok(mut shown) = state.ask_shown.lock() {
         if *shown != want {
             let _ = state.ask_menu.remove(&state.ask_free);
             let _ = state.ask_menu.remove(&state.ask_haiku);
             let _ = state.ask_menu.remove(&state.ask_other);
+            let _ = state.ask_menu.remove(&state.ask_groq_fast);
+            let _ = state.ask_menu.remove(&state.ask_groq_smart);
+            let _ = state.ask_menu.remove(&state.ask_groq_other);
             let _ = state.ask_menu.remove(&state.ask_claude_haiku);
             let _ = state.ask_menu.remove(&state.ask_claude_sonnet);
             if anthropic {
                 let _ = state.ask_menu.append(&state.ask_claude_haiku);
                 let _ = state.ask_menu.append(&state.ask_claude_sonnet);
+            } else if groq {
+                let _ = state.ask_menu.append(&state.ask_groq_fast);
+                let _ = state.ask_menu.append(&state.ask_groq_smart);
+                let _ = state.ask_menu.append(&state.ask_groq_other);
             } else {
                 let _ = state.ask_menu.append(&state.ask_free);
                 let _ = state.ask_menu.append(&state.ask_haiku);

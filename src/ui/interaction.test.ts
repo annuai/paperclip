@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { attachInteraction } from './interaction';
 import { Renderer } from '../art/renderer';
 import { characterHitTarget } from './interactionTarget';
+
+const detachers: (() => void)[] = [];
+afterEach(() => { while (detachers.length) detachers.pop()!(); }); // window listeners must not leak between tests
 
 function setup() {
   document.body.innerHTML = '<div id="character"></div>';
   const host = document.getElementById('character') as HTMLElement;
   const renderer = new Renderer(host, 'classic');
   const startDragging = vi.fn(() => Promise.resolve());
-  const handlers = { click: vi.fn(), doubleClick: vi.fn(), tripleClick: vi.fn(), middleClick: vi.fn(), contextMenu: vi.fn(), dragStart: vi.fn(), matTap: vi.fn() };
-  attachInteraction(characterHitTarget(host), handlers, startDragging);
+  const handlers = { click: vi.fn(), doubleClick: vi.fn(), tripleClick: vi.fn(), middleClick: vi.fn(), openAsk: vi.fn(), contextMenu: vi.fn(), dragStart: vi.fn(), matTap: vi.fn() };
+  detachers.push(attachInteraction(characterHitTarget(host), handlers, startDragging));
   return { host, renderer, startDragging, handlers };
 }
 
@@ -64,12 +67,15 @@ describe('interaction survives style switching', () => {
   });
 
   it('still opens the context menu after switching back to classic', () => {
+    vi.useFakeTimers();
     const { host, renderer, handlers } = setup();
     renderer.setStyle('flat');
     renderer.setStyle('classic');
     const svg = host.querySelector('svg') as SVGSVGElement;
     svg.dispatchEvent(new MouseEvent('contextmenu', { clientX: 10, clientY: 10, bubbles: true, cancelable: true }));
+    vi.advanceTimersByTime(500); // the menu waits 0.4 s for a possible second right click
     expect(handlers.contextMenu).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   describe('multi-click on the clip', () => {
@@ -170,20 +176,49 @@ describe('middle click', () => {
     el.dispatchEvent(new MouseEvent('mousedown', { button: 1, clientX: x, clientY: y, bubbles: true }));
     el.dispatchEvent(new MouseEvent('mouseup', { button: 1, clientX: x, clientY: y, bubbles: true }));
   };
-  it('on the clip calls middleClick() at once, and nothing else', () => {
+  it('on the clip calls middleClick() once the double-click window has passed, and nothing else', () => {
     vi.useFakeTimers();
     const { host, handlers } = setup();
     mid(host.querySelector('#wire') as SVGElement);
-    expect(handlers.middleClick).toHaveBeenCalledTimes(1);
+    expect(handlers.middleClick).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1000);
+    expect(handlers.middleClick).toHaveBeenCalledTimes(1);
+    expect(handlers.openAsk).not.toHaveBeenCalled();
     expect(handlers.click).not.toHaveBeenCalled();
     expect(handlers.doubleClick).not.toHaveBeenCalled();
     expect(handlers.tripleClick).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
+  it('double middle click opens Ask Paperclip instead of a quote', () => {
+    vi.useFakeTimers();
+    const { host, handlers } = setup();
+    const wire = host.querySelector('#wire') as SVGElement;
+    mid(wire);
+    vi.advanceTimersByTime(120);
+    mid(wire);
+    vi.advanceTimersByTime(1000);
+    expect(handlers.openAsk).toHaveBeenCalledTimes(1);
+    expect(handlers.middleClick).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+  it('two slow middle clicks are two quotes', () => {
+    vi.useFakeTimers();
+    const { host, handlers } = setup();
+    const wire = host.querySelector('#wire') as SVGElement;
+    mid(wire);
+    vi.advanceTimersByTime(600);
+    mid(wire);
+    vi.advanceTimersByTime(600);
+    expect(handlers.middleClick).toHaveBeenCalledTimes(2);
+    expect(handlers.openAsk).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
   it('on the mat does nothing', () => {
+    vi.useFakeTimers();
     const { host, handlers } = setup();
     mid(host.querySelector('#mat') as SVGGElement);
+    vi.advanceTimersByTime(1000);
+    vi.useRealTimers();
     expect(handlers.middleClick).not.toHaveBeenCalled();
     expect(handlers.matTap).not.toHaveBeenCalled();
   });
@@ -200,5 +235,59 @@ describe('middle click', () => {
     wire.dispatchEvent(new MouseEvent('mousedown', { button: 1, clientX: 50, clientY: 50, bubbles: true }));
     window.dispatchEvent(new MouseEvent('mousemove', { clientX: 80, clientY: 80, bubbles: true }));
     expect(startDragging).not.toHaveBeenCalled();
+  });
+});
+
+describe('right click twice', () => {
+  const rc = (el: EventTarget, x = 50, y = 50) =>
+    el.dispatchEvent(new MouseEvent('contextmenu', { button: 2, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+  it('one right click opens the menu after the 0.4 s wait, not before', () => {
+    vi.useFakeTimers();
+    const { host, handlers } = setup();
+    rc(host.querySelector('#wire') as SVGElement);
+    vi.advanceTimersByTime(390);
+    expect(handlers.contextMenu).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(20);
+    expect(handlers.contextMenu).toHaveBeenCalledTimes(1);
+    expect(handlers.contextMenu).toHaveBeenCalledWith(50, 50);
+    expect(handlers.openAsk).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+  it('a second right click within 0.4 s opens Ask Paperclip and the menu never opens', () => {
+    vi.useFakeTimers();
+    const { host, handlers } = setup();
+    const wire = host.querySelector('#wire') as SVGElement;
+    rc(wire);
+    vi.advanceTimersByTime(200);
+    rc(wire, 54, 52);
+    vi.advanceTimersByTime(1000);
+    expect(handlers.openAsk).toHaveBeenCalledTimes(1);
+    expect(handlers.contextMenu).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+  it('a slow second right click just opens the menu again', () => {
+    vi.useFakeTimers();
+    const { host, handlers } = setup();
+    const wire = host.querySelector('#wire') as SVGElement;
+    rc(wire);
+    vi.advanceTimersByTime(800);
+    rc(wire);
+    vi.advanceTimersByTime(800);
+    expect(handlers.contextMenu).toHaveBeenCalledTimes(2);
+    expect(handlers.openAsk).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+  it('a quick second right click far away is a fresh menu, not Ask', () => {
+    vi.useFakeTimers();
+    const { host, handlers } = setup();
+    const wire = host.querySelector('#wire') as SVGElement;
+    rc(wire);
+    vi.advanceTimersByTime(100);
+    rc(wire, 120, 160);
+    vi.advanceTimersByTime(1000);
+    expect(handlers.openAsk).not.toHaveBeenCalled();
+    expect(handlers.contextMenu).toHaveBeenCalledTimes(1);
+    expect(handlers.contextMenu).toHaveBeenCalledWith(120, 160);
+    vi.useRealTimers();
   });
 });

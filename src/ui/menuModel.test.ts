@@ -7,7 +7,7 @@ const base: MenuState = {
   sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, outfits: true, style: 'classic',
   water: { enabled: true, intervalMin: 45, glassesToday: 2 },
   stretch: { enabled: true, everyMin: 60 }, focusLeft: null, calendarSupported: true, meetingHeadsUp: false,
-  ask: { keySet: false, provider: 'openrouter', model: 'google/gemma-4-31b-it:free', claudeModel: 'claude-haiku-5-5' },
+  ask: { keySet: false, provider: 'openrouter', model: 'google/gemma-4-31b-it:free', groqModel: 'llama-3.3-70b-versatile', claudeModel: 'claude-haiku-5-5' },
 };
 const flat = (items: MenuItem[]): MenuItem[] => items.flatMap((i) => [i, ...flat(i.children ?? [])]);
 const find = (items: MenuItem[], id: string) => flat(items).find((i) => i.id === id);
@@ -20,8 +20,8 @@ describe('main menu', () => {
 
   it('Ask Paperclip (OpenRouter): ask, provider radios, key, free / paid / other model radios; "Remove API key" only with a key', () => {
     const ids = (m: MenuState) => find(buildMenu(m), 'ask')?.children?.map((c) => c.id);
-    expect(ids(base)).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-anthropic', 'ask-key', 'ask-model-free', 'ask-model-haiku', 'ask-model-other']);
-    expect(ids({ ...base, ask: { ...base.ask, keySet: true } })).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-anthropic', 'ask-key', 'ask-remove', 'ask-model-free', 'ask-model-haiku', 'ask-model-other']);
+    expect(ids(base)).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-groq', 'ask-provider-anthropic', 'ask-key', 'ask-model-free', 'ask-model-haiku', 'ask-model-other']);
+    expect(ids({ ...base, ask: { ...base.ask, keySet: true } })).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-groq', 'ask-provider-anthropic', 'ask-key', 'ask-remove', 'ask-model-free', 'ask-model-haiku', 'ask-model-other']);
     const m = buildMenu(base);
     expect(find(m, 'ask-provider-openrouter')?.checked).toBe(true);
     expect(find(m, 'ask-provider-anthropic')?.checked).toBe(false);
@@ -43,9 +43,31 @@ describe('main menu', () => {
     expect(find(custom, 'ask-model-haiku')?.checked).toBe(false);
   });
 
+  it('Ask Paperclip (Groq): provider radios in order, Groq key label, Groq model radios only', () => {
+    const g = buildMenu({ ...base, ask: { ...base.ask, keySet: true, provider: 'groq' } });
+    expect(find(g, 'ask')?.children?.map((c) => c.id)).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-groq', 'ask-provider-anthropic', 'ask-key', 'ask-remove', 'ask-groq-fast', 'ask-groq-smart', 'ask-groq-other']);
+    expect(find(g, 'ask-provider-groq')?.checked).toBe(true);
+    expect(find(g, 'ask-provider-groq')?.label).toBe('Groq');
+    expect(find(g, 'ask-provider-openrouter')?.checked).toBe(false);
+    expect(find(g, 'ask-provider-anthropic')?.checked).toBe(false);
+    expect(find(g, 'ask-key')?.label).toBe('Set Groq API key…');
+    expect(find(g, 'ask-groq-fast')?.checked).toBe(true);
+    expect(find(g, 'ask-groq-smart')?.checked).toBe(false);
+    expect(find(g, 'ask-groq-other')?.label).toBe('Other model…');
+    expect(find(g, 'ask-model-free')).toBeUndefined();
+    expect(find(g, 'ask-claude-haiku')).toBeUndefined();
+    const smart = buildMenu({ ...base, ask: { ...base.ask, provider: 'groq', groqModel: 'openai/gpt-oss-120b' } });
+    expect(find(smart, 'ask-groq-smart')?.checked).toBe(true);
+    expect(find(smart, 'ask-groq-fast')?.checked).toBe(false);
+    const custom = buildMenu({ ...base, ask: { ...base.ask, provider: 'groq', groqModel: 'openai/gpt-oss-20b' } });
+    expect(find(custom, 'ask-groq-other')?.checked).toBe(true);
+    expect(find(custom, 'ask-groq-other')?.label).toBe('openai/gpt-oss-20b');
+    expect(find(custom, 'ask-groq-fast')?.checked).toBe(false);
+    expect(buildMenu({ ...base, ask: { ...base.ask, provider: 'groq' } })).toHaveLength(14);
+  });
   it('Ask Paperclip (Claude): only the Claude model radios, and the key item names Claude', () => {
-    const a = buildMenu({ ...base, ask: { keySet: true, provider: 'anthropic', model: 'google/gemma-4-31b-it:free', claudeModel: 'claude-sonnet-5-5' } });
-    expect(find(a, 'ask')?.children?.map((c) => c.id)).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-anthropic', 'ask-key', 'ask-remove', 'ask-claude-haiku', 'ask-claude-sonnet']);
+    const a = buildMenu({ ...base, ask: { keySet: true, provider: 'anthropic', model: 'google/gemma-4-31b-it:free', groqModel: 'llama-3.3-70b-versatile', claudeModel: 'claude-sonnet-5-5' } });
+    expect(find(a, 'ask')?.children?.map((c) => c.id)).toEqual(['ask-open', 'ask-provider-openrouter', 'ask-provider-groq', 'ask-provider-anthropic', 'ask-key', 'ask-remove', 'ask-claude-haiku', 'ask-claude-sonnet']);
     expect(find(a, 'ask-provider-anthropic')?.checked).toBe(true);
     expect(find(a, 'ask-provider-openrouter')?.checked).toBe(false);
     expect(find(a, 'ask-key')?.label).toBe('Set Claude API key…');

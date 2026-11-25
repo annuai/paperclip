@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { AskFlow, AskHistory, DEFAULT_ASK_MODEL, MAX_QUESTION_CHARS, DEFAULT_ASK_PROVIDER, isValidModelId, normalizeAskModel, normalizeAskProvider, normalizeClaudeModel, providerName } from './ask';
+import { AskFlow, AskHistory, DEFAULT_ASK_MODEL, MAX_QUESTION_CHARS, DEFAULT_ASK_PROVIDER, isValidModelId, normalizeAskModel, normalizeAskProvider, normalizeClaudeModel, providerName, DEFAULT_GROQ_MODEL, isValidGroqModelId, isPresetGroqModel, normalizeGroqModel } from './ask';
+import type { AskProvider } from './ask';
 import type { AskDeps, AskResult, Turn } from './ask';
 import type { PromptOpts } from './agent';
 
@@ -17,7 +18,19 @@ describe('AskHistory', () => {
 });
 
 describe('provider and model normalizing', () => {
-  it('provider defaults to openrouter; only "anthropic" switches', () => {
+  it('Groq: provider name, normalization and model ids (vendor prefix optional)', () => {
+    expect(providerName('groq')).toBe('Groq');
+    expect(normalizeAskProvider('groq')).toBe('groq');
+    expect(DEFAULT_GROQ_MODEL).toBe('llama-3.3-70b-versatile');
+    for (const ok of ['llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant', 'meta-llama/llama-4-scout-17b-16e-instruct']) expect(isValidGroqModelId(ok), ok).toBe(true);
+    for (const bad of ['', 'a b', 'a/b/c', '/b', 'a/', '-x', `a${'b'.repeat(100)}`, 5]) expect(isValidGroqModelId(bad), String(bad)).toBe(false);
+    expect(normalizeGroqModel('openai/gpt-oss-20b')).toBe('openai/gpt-oss-20b');
+    expect(normalizeGroqModel('a b')).toBe('llama-3.3-70b-versatile');
+    expect(normalizeGroqModel(undefined)).toBe('llama-3.3-70b-versatile');
+    expect(isPresetGroqModel('openai/gpt-oss-120b')).toBe(true);
+    expect(isPresetGroqModel('openai/gpt-oss-20b')).toBe(false);
+  });
+  it('provider defaults to openrouter; only "anthropic" and "groq" switch', () => {
     expect(DEFAULT_ASK_PROVIDER).toBe('openrouter');
     expect(normalizeAskProvider(undefined)).toBe('openrouter');
     expect(normalizeAskProvider('x')).toBe('openrouter');
@@ -53,7 +66,7 @@ interface Rig {
   log: string[];
   prompts: { text: string; opts: PromptOpts }[];
   queries: { q: string; turns: Turn[] }[];
-  state: { key: boolean; intro: boolean; epoch: number; savedKeys: string[]; saveOk: boolean; models: string[] };
+  state: { key: boolean; intro: boolean; epoch: number; savedKeys: string[]; saveOk: boolean; models: string[]; provider: AskProvider };
   /** answers the next prompt()s with these values */
   typed: (string | null)[];
   choices: string[];
@@ -66,7 +79,7 @@ function rig(): Rig {
     log: [] as string[],
     prompts: [] as Rig['prompts'],
     queries: [] as Rig['queries'],
-    state: { key: true, intro: true, epoch: 0, savedKeys: [] as string[], saveOk: true, models: [] as string[] },
+    state: { key: true, intro: true, epoch: 0, savedKeys: [] as string[], saveOk: true, models: [] as string[], provider: 'openrouter' as AskProvider },
     typed: [] as (string | null)[],
     choices: [] as string[],
     results: [] as AskResult[],
@@ -85,6 +98,7 @@ function rig(): Rig {
     saveKey: async (k) => { r.state.savedKeys.push(k); return r.state.saveOk; },
     removeKey: async () => { r.state.key = false; r.log.push('removeKey'); },
     setModel: (id) => { r.state.models.push(id); },
+    provider: () => r.state.provider,
     epoch: () => r.state.epoch,
   };
   r.flow = new AskFlow(deps, r.history);
@@ -263,6 +277,39 @@ describe('AskFlow: other model', () => {
     await r.flow.chooseModel();
     expect(r.state.models).toEqual([]);
     expect(r.flow.state).toBe('idle');
+  });
+});
+
+describe('AskFlow: other model (Groq)', () => {
+  it('accepts a bare Groq id and a vendor id, stores them, and the prompt placeholder is not vendor/model-name', async () => {
+    const r = rig();
+    r.state.provider = 'groq';
+    r.typed.push(' llama-3.3-70b-versatile ', 'openai/gpt-oss-20b');
+    await r.flow.chooseModel();
+    await r.flow.chooseModel();
+    expect(r.state.models).toEqual(['llama-3.3-70b-versatile', 'openai/gpt-oss-20b']);
+    expect(r.prompts[0].opts.placeholder).toBe('model-id');
+  });
+  it('OpenRouter still refuses a bare id', async () => {
+    const r = rig();
+    r.typed.push('llama-3.3-70b-versatile');
+    await r.flow.chooseModel();
+    expect(r.state.models).toEqual([]);
+    expect(r.log).toContain('say:line:modelInvalid');
+  });
+  it('a Groq 429 or 413 is just said (no key re-entry), and a Groq 401 offers "Set key"', async () => {
+    const r = rig();
+    r.state.provider = 'groq';
+    r.typed.push('q');
+    r.results.push({ ok: false, failure: { kind: 'tooLong', message: 'too long' } });
+    await r.flow.ask();
+    expect(r.log).toContain('say:too long');
+    const r2 = rig();
+    r2.state.provider = 'groq';
+    r2.typed.push('q');
+    r2.results.push({ ok: false, failure: { kind: 'unauthorized', message: 'bad key' } });
+    await r2.flow.ask();
+    expect(r2.log).toContain('choose:bad key|key,done');
   });
 });
 
