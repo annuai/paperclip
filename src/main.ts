@@ -37,6 +37,7 @@ import { ContextMenu } from './ui/contextMenu';
 import { buildMenu } from './ui/menuModel';
 import type { MenuItem } from './ui/contextMenu';
 import { HitRects } from './ui/hitRects';
+import { FocusLease } from './ui/focusLease';
 import { attachInteraction } from './ui/interaction';
 import { characterHitTarget } from './ui/interactionTarget';
 import { JumpCombo } from './agent/jumpCombo';
@@ -108,13 +109,15 @@ async function boot(): Promise<void> {
     return { x: r.x, y: r.y, w: r.width, h: r.height };
   };
   const balloonEl = document.getElementById('balloon') as HTMLElement;
+  // The menu and Ask's input need the window to be the active one (hover, click-outside, typing): see FocusLease.
+  const keyFocus = new FocusLease(askFocus);
   const menuEl = document.getElementById('menu') as HTMLElement;
   // Ask Paperclip's input needs the keyboard: the window is focus:false, so grab focus while the input is open (the balloon is
   // a hit rect meanwhile, via onVisibility) and hand it back afterwards. Click-through returns when the balloon rect goes away.
   const balloon = new Balloon(balloonEl, (v) => hit.set('balloon', v ? rectOf(balloonEl) : null), {
     onPrompt: (active) => {
-      if (active) void askFocus(true).then(() => balloon.focusInput());
-      else void askFocus(false);
+      if (active) void keyFocus.acquire('prompt').then(() => balloon.focusInput());
+      else keyFocus.release('prompt');
     },
   });
   // If the user wanders off (to copy an API key, say) the input waits; a forgotten one is abandoned after 5 minutes.
@@ -124,7 +127,11 @@ async function boot(): Promise<void> {
     promptAbandon = setTimeout(() => { promptAbandon = null; if (!document.hasFocus()) balloon.cancelPrompt(); }, 300_000);
   });
   window.addEventListener('focus', () => { if (promptAbandon !== null) { clearTimeout(promptAbandon); promptAbandon = null; } });
-  const menu = new ContextMenu(menuEl, (id) => void runCommand(id), (v) => hit.set('menu', v ? menu.rect() : null));
+  const menu = new ContextMenu(menuEl, (id) => void runCommand(id), (v) => {
+    hit.set('menu', v ? menu.rect() : null);
+    if (v) void keyFocus.acquire('menu');
+    else keyFocus.release('menu');
+  });
 
   const agent = new Agent({ animator, balloon, win });
   agent.onIdle(updateHit);
