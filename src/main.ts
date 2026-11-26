@@ -33,7 +33,7 @@ import type { FilesDropped } from './platform/tauri';
 import { LocalContentProvider } from './content/provider';
 import type { ContentKind, ContentProvider } from './content/provider';
 import { loadSettingsWithMeta, locateWindow, restorePosition, saveSettings, savePosition, trackPosition, windowSize } from './platform/settings';
-import { emitToGuide, guideClose, guideOpen, onAskKeyChanged, onGuideMessage, onGuideState, askQuestion, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMenuPointer, onOutsidePress, setMenuTracking, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import { onSmartZoom, emitToGuide, guideClose, guideOpen, onAskKeyChanged, onGuideMessage, onGuideState, askQuestion, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMenuPointer, onOutsidePress, setMenuTracking, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
 import type { SystemInfo } from './platform/tauri';
 import { WelcomeBack, WelcomeLines } from './agent/welcomeBack';
 import { EyeFollow, EyeTracker, characterClick, computeTarget } from './agent/eyeFollow';
@@ -987,6 +987,13 @@ async function boot(): Promise<void> {
     agent.interrupt();
   };
 
+  const openAskNow = () => {
+    menu.close(); // in case a menu from an earlier right click is still open
+    if (sleep.sleeping) void sleep.wake('doubleClick');
+    user();
+    void ask.ask(); // same as the menu's "Ask a question…"
+  };
+
   const jumps = new JumpCombo(agent);
   const hitTarget = characterHitTarget(charEl);
   attachInteraction(
@@ -1018,12 +1025,7 @@ async function boot(): Promise<void> {
         user();
         void speakKind('quote');
       },
-      openAsk: () => {
-        menu.close(); // in case a menu from an earlier right click is still open
-        if (sleep.sleeping) void sleep.wake('doubleClick');
-        user();
-        void ask.ask(); // same as the menu's "Ask a question…"
-      },
+      openAsk: openAskNow,
       contextMenu: (x, y) => {
         scheduler.notifyActivity();
         menu.open(x, y, menuItems());
@@ -1155,6 +1157,9 @@ async function boot(): Promise<void> {
       console.warn('zip flow failed', e);
     }
   };
+  // A trackpad's two-finger double tap never arrives as right clicks: macOS reports it as Smart Zoom.
+  void onSmartZoom((p) => { if (!agent.hidden && !thrower.flying && overCharacter(p.x, p.y)) openAskNow(); })
+    .catch((e) => console.warn('smart zoom listener failed', e));
   void onFileDrag((e) => {
     if (e.phase === 'leave' || agent.hidden || sleep.sleeping || thrower.flying || !overCharacter(e.x, e.y)) { endOoh(); return; }
     if (oohActive) return;

@@ -2,6 +2,7 @@ mod ask;
 mod calendar;
 mod clickthrough;
 mod files;
+mod gesture;
 mod guide;
 mod session;
 mod system;
@@ -68,6 +69,7 @@ pub fn run() {
             session::start(app.handle());
             system::start(app.handle());
             calendar::start(app.handle());
+            gesture::start(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())

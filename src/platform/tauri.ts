@@ -204,6 +204,10 @@ export async function guideOpen(o: GuideOpenOpts): Promise<boolean> {
     return false;
   }
 }
+/** macOS Smart Zoom (two-finger double tap) over this window, in CSS px. */
+export async function onSmartZoom(cb: (p: { x: number; y: number }) => void): Promise<() => void> {
+  return getCurrentWindow().listen<{ x: number; y: number }>('smart-zoom', (e) => cb(e.payload));
+}
 export async function guideClose(): Promise<void> {
   await guard('guide_close', () => invoke('guide_close'));
 }
