@@ -216,3 +216,14 @@ describe('late night', () => {
     expect(q.tick(ctx({ now: at(2, 5) }))).toEqual([]);
   });
 });
+
+describe('adopting a hide made while he was away', () => {
+  it('after adoptHidden the end of full screen shows him', () => {
+    const p = make();
+    p.update(snap({ fullscreen: true }), ctx({ hidden: true }));
+    expect(p.isAutoHidden()).toBe(false);
+    p.adoptHidden();
+    expect(p.isAutoHidden()).toBe(true);
+    expect(p.update(snap(), ctx({ hidden: true }))).toEqual([{ type: 'show' }]);
+  });
+});

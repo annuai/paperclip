@@ -24,7 +24,7 @@ Sits over whatever the user is doing: any wallpaper, any app, light or dark menu
 - Offline content: greetings, quotes, jokes, tips, dizzy and sleep lines (src/content/*.json).
 - 20+ named animations driven by a pose system (src/anim, src/art); rAF only while animating.
 - Budgets: ~60 MB RSS, near-zero idle CPU.
-- Two visual styles: "Classic" (incumbent, kept as is) and "Flat" (new). User switches via a menu toggle in tray + right-click menu, remembered across launches.
+- Two visual styles: "Flat" (the default) and "Classic" (the original, kept as is). User switches via a menu toggle in tray + right-click menu, remembered across launches.
 
 ## Brand Commitments
 - Must never copy Microsoft Clippy / clippy.js artwork.

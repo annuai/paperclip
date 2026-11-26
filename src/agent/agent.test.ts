@@ -132,3 +132,12 @@ describe('Agent', () => {
     expect(log.filter((l) => l === 'exit').length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('Agent.hide with a chosen exit', () => {
+  it('plays that animation, then hides the window', async () => {
+    const { agent, log } = setup();
+    await agent.hide('ExitRollUp');
+    expect(log).toEqual(['play:ExitRollUp', 'win.hide']);
+    expect(agent.hidden).toBe(true);
+  });
+});

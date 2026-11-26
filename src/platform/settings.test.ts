@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULTS, parseFocus, parseSettings, parseStretch, parseWater } from './settingsParse';
+import { DEFAULTS, isFreshStore, parseFocus, parseSettings, parseStretch, parseWater } from './settingsParse';
 import { normalizeStyle } from '../art/style';
 
 describe('style persistence', () => {
-  it('defaults to classic', () => {
-    expect(DEFAULTS.style).toBe('classic');
-    expect(parseSettings({}).style).toBe('classic');
+  it('defaults to flat', () => {
+    expect(DEFAULTS.style).toBe('flat');
+    expect(parseSettings({}).style).toBe('flat');
   });
   it('round-trips a saved style and rejects junk', () => {
     expect(parseSettings({ style: 'flat' }).style).toBe('flat');
     expect(parseSettings({ style: 'classic' }).style).toBe('classic');
-    expect(parseSettings({ style: 'neon' }).style).toBe('classic');
-    expect(normalizeStyle(42)).toBe('classic');
+    expect(parseSettings({ style: 'neon' }).style).toBe('flat');
+    expect(normalizeStyle(42)).toBe('flat');
   });
   it('keeps the other settings valid', () => {
     const s = parseSettings({ quiet: true, hidden: true, position: { x: 1, y: 2 }, style: 'flat' });
@@ -143,5 +143,20 @@ describe('ask settings', () => {
   });
   it('no API key field exists in settings (it lives in the keychain)', () => {
     expect(Object.keys(parseSettings({ apiKey: 'sk-ant-x', askKey: 'sk-ant-x' })).join(' ')).not.toMatch(/key/i);
+  });
+});
+
+describe('welcome guide settings', () => {
+  it('guideSeen defaults to 0 and keeps non-negative integers', () => {
+    expect(parseSettings({}).guideSeen).toBe(0);
+    expect(parseSettings({ guideSeen: 1 }).guideSeen).toBe(1);
+    expect(parseSettings({ guideSeen: -1 }).guideSeen).toBe(0);
+    expect(parseSettings({ guideSeen: 1.5 }).guideSeen).toBe(0);
+    expect(parseSettings({ guideSeen: 'x' }).guideSeen).toBe(0);
+  });
+  it('isFreshStore is true only when every loaded value is undefined', () => {
+    expect(isFreshStore({ quiet: undefined, style: undefined })).toBe(true);
+    expect(isFreshStore({ quiet: undefined, style: 'flat' })).toBe(false);
+    expect(isFreshStore({})).toBe(true);
   });
 });

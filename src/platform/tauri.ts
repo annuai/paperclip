@@ -7,7 +7,12 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import type { WindowCtl } from '../agent/agent';
 import type { Rect } from '../ui/hitRects';
 import type { CalEvent } from '../agent/meeting';
-import type { AskFailure, AskResult, Turn } from '../agent/ask';
+import { normalizeAskProvider } from '../agent/ask';
+import type { AskFailure, AskProvider, AskResult, Turn } from '../agent/ask';
+import { emitTo } from '@tauri-apps/api/event';
+import { normalizeStyle } from '../art/style';
+import type { Style } from '../art/style';
+import type { OutfitName } from '../art/outfits';
 
 async function guard<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
   try {
@@ -83,7 +88,7 @@ export async function syncTray(
   visible: boolean,
   quiet: boolean,
   asleep = false,
-  style = 'classic',
+  style = 'flat',
   water = { enabled: true, intervalMin: 45, glasses: 0 },
   greet = true,
   presence = { hidePresenting: true, music: true },
@@ -180,6 +185,54 @@ export async function askQuestion(question: string, history: Turn[], model: stri
 /** Gives the (normally unfocused) window the keyboard for the ask input, or hands it back afterwards. */
 export async function askFocus(on: boolean): Promise<void> {
   await guard('ask_focus', () => invoke('ask_focus', { on }));
+}
+
+// ---- The welcome guide (a second window). Listeners are window-scoped so our own messages to it never echo back. ----
+export interface GuideOpenOpts { style: Style; provider: AskProvider; models: { openrouter: string; groq: string; claude: string }; start: 'hello' | 'key' | 'focus'; outfit: OutfitName }
+export type GuideMessage =
+  | { ev: 'guide:ready' }
+  | { ev: 'guide:provider'; provider: AskProvider }
+  | { ev: 'guide:style'; style: Style }
+  | { ev: 'guide:finished'; keySaved: boolean; asked: boolean };
+/** Opens the guide, or brings the open one forward ('focus' leaves it on its screen). False when it could not. */
+export async function guideOpen(o: GuideOpenOpts): Promise<boolean> {
+  try {
+    await invoke('guide_open', { ...o });
+    return true;
+  } catch (e) {
+    console.warn('guide_open failed', e);
+    return false;
+  }
+}
+/** macOS Smart Zoom (two-finger double tap) over this window, in CSS px. */
+export async function onSmartZoom(cb: (p: { x: number; y: number }) => void): Promise<() => void> {
+  return getCurrentWindow().listen<{ x: number; y: number }>('smart-zoom', (e) => cb(e.payload));
+}
+export async function guideClose(): Promise<void> {
+  await guard('guide_close', () => invoke('guide_close'));
+}
+export async function onAskKeyChanged(cb: (provider: AskProvider) => void): Promise<() => void> {
+  return getCurrentWindow().listen<string>('ask-key-changed', (e) => cb(normalizeAskProvider(e.payload)));
+}
+export async function onGuideState(cb: (s: { open: boolean }) => void): Promise<() => void> {
+  return getCurrentWindow().listen<{ open?: unknown }>('guide-state', (e) => cb({ open: e.payload?.open === true }));
+}
+export async function onGuideMessage(cb: (m: GuideMessage) => void): Promise<void> {
+  const w = getCurrentWindow();
+  type P = { provider?: unknown; style?: unknown; keySaved?: unknown; asked?: unknown } | null;
+  await w.listen('guide:ready', () => cb({ ev: 'guide:ready' }));
+  await w.listen<P>('guide:provider', (e) => {
+    const p = e.payload?.provider;
+    if (p === 'openrouter' || p === 'groq' || p === 'anthropic') cb({ ev: 'guide:provider', provider: p });
+  });
+  await w.listen<P>('guide:style', (e) => {
+    const s = e.payload?.style;
+    if (s === 'classic' || s === 'flat') cb({ ev: 'guide:style', style: normalizeStyle(s) });
+  });
+  await w.listen<P>('guide:finished', (e) => cb({ ev: 'guide:finished', keySaved: e.payload?.keySaved === true, asked: e.payload?.asked === true }));
+}
+export async function emitToGuide(ev: 'guide:tray' | 'guide:style' | 'guide:provider', payload: unknown): Promise<void> {
+  await guard(ev, () => emitTo('welcome', ev, payload));
 }
 
 // ---- Updates (tauri-plugin-updater runs the HTTP in Rust, so the CSP needs no change) ----

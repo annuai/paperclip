@@ -27,7 +27,7 @@ The character is original artwork. Paperclip is not affiliated with Microsoft an
   
   Anything else goes to the AI as before.
 - **Lives:** blinks, looks around, fidgets, dozes off when you leave him alone, and enters and leaves with a yoga mat in several different ways.
-- **Two styles:** *Classic* (glossy) and *Flat* (geometric, set in Oswald). Switch between them at any time.
+- **Two styles:** *Flat* (geometric, set in Oswald; the default) and *Classic* (glossy). Switch between them at any time.
 - **Stays out of the way:** clicks on the empty parts of his window pass through to the apps underneath, and he never takes keyboard focus, except while you are typing a question to Ask Paperclip.
 
 ![A water reminder with Drank some and Later buttons](docs/screenshots/water.png)

@@ -2,6 +2,8 @@ mod ask;
 mod calendar;
 mod clickthrough;
 mod files;
+mod gesture;
+mod guide;
 mod session;
 mod system;
 mod tray;
@@ -30,6 +32,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(clickthrough::HitState::default()))
         .manage(files::DropState::default())
         .on_window_event(|window, event| {
+            guide::on_window_event(window, event);
             if let tauri::WindowEvent::DragDrop(e) = event {
                 files::handle_drag_drop(window, e);
             }
@@ -49,6 +52,9 @@ pub fn run() {
             ask::ask_set_key,
             ask::ask_remove_key,
             ask::ask_focus,
+            guide::guide_open,
+            guide::guide_open_key_page,
+            guide::guide_close,
             files::zip_dropped,
             files::clear_dropped,
             files::reveal_zip,
@@ -63,6 +69,7 @@ pub fn run() {
             session::start(app.handle());
             system::start(app.handle());
             calendar::start(app.handle());
+            gesture::start(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())

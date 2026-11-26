@@ -77,7 +77,7 @@ interface Rig {
   locals: (LocalAnswer | null)[];
 }
 
-function rig(): Rig {
+function rig(extra: Partial<AskDeps> = {}): Rig {
   const r = {
     log: [] as string[],
     prompts: [] as Rig['prompts'],
@@ -106,7 +106,7 @@ function rig(): Rig {
     provider: () => r.state.provider,
     epoch: () => r.state.epoch,
   };
-  r.flow = new AskFlow(deps, r.history);
+  r.flow = new AskFlow({ ...deps, ...extra }, r.history);
   return r;
 }
 
@@ -453,5 +453,49 @@ describe('AskFlow: local answers (intents)', () => {
     orig.deps.local = async (q) => { const a = await local(q); r.state.epoch++; return a; };
     await r.flow.ask();
     expect(r.log).not.toContain('after');
+  });
+});
+
+describe('AskFlow: the welcome guide offer', () => {
+  const withGuide = () => {
+    const opened: string[] = [];
+    const r = rig({ openGuide: (start) => { opened.push(start); } });
+    r.state.key = false;
+    r.typed.push('what is rust?');
+    return { r, opened };
+  };
+  it('offers to show how; "Show me how" opens the guide and never prompts for the key', async () => {
+    const { r, opened } = withGuide();
+    r.choices.push('guide');
+    await r.flow.ask();
+    expect(r.log).toContain('choose:line:keyOffer|guide,paste,done');
+    expect(opened).toEqual(['key']);
+    expect(r.prompts).toHaveLength(1); // only the question
+    expect(r.queries).toHaveLength(0);
+  });
+  it('"I have a key" prompts for it as before, then sends the question', async () => {
+    const { r, opened } = withGuide();
+    r.choices.push('paste');
+    r.typed.push('sk-or-x');
+    await r.flow.ask();
+    expect(opened).toEqual([]);
+    expect(r.state.savedKeys).toEqual(['sk-or-x']);
+    expect(r.queries).toHaveLength(1);
+  });
+  it('"Not now" ends the flow', async () => {
+    const { r, opened } = withGuide();
+    r.choices.push('done');
+    await r.flow.ask();
+    expect(opened).toEqual([]);
+    expect(r.queries).toHaveLength(0);
+    expect(r.flow.state).toBe('idle');
+  });
+  it('the menu "Set key" goes straight to the field', async () => {
+    const { r } = withGuide();
+    r.typed.length = 0;
+    r.typed.push('sk-or-y');
+    await r.flow.setKey();
+    expect(r.log.some((l) => l.startsWith('choose:'))).toBe(false);
+    expect(r.state.savedKeys).toEqual(['sk-or-y']);
   });
 });

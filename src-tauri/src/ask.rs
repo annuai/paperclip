@@ -10,6 +10,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
+use tauri::Emitter;
 
 const KEYCHAIN_SERVICE: &str = "app.paperclip.desktop";
 const OPENROUTER_ACCOUNT: &str = "openrouter-api-key";
@@ -29,8 +30,8 @@ const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// Server-side refusal fallback (Sonnet 5.5 supports the `"default"` form; Haiku 5.5 has no server-side fallback).
 const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
-const HAIKU: &str = "claude-haiku-5-5";
-const SONNET: &str = "claude-sonnet-5-5";
+pub(crate) const HAIKU: &str = "claude-haiku-5-5";
+pub(crate) const SONNET: &str = "claude-sonnet-5-5";
 const ANTHROPIC_MAX_TOKENS: u32 = 200;
 const REFERER: &str = "https://github.com/annuai/paperclip";
 const APP_TITLE: &str = "Paperclip";
@@ -72,6 +73,14 @@ impl Provider {
             Some("anthropic") => Provider::Anthropic,
             Some("groq") => Provider::Groq,
             _ => Provider::OpenRouter,
+        }
+    }
+    /// The id JS uses.
+    fn id(self) -> &'static str {
+        match self {
+            Provider::OpenRouter => "openrouter",
+            Provider::Groq => "groq",
+            Provider::Anthropic => "anthropic",
         }
     }
     fn account(self) -> &'static str {
@@ -642,6 +651,9 @@ fn validate_key(provider: Provider, raw: &str) -> Result<String, &'static str> {
     if key.is_empty() {
         return Err("That key is empty.");
     }
+    if key.contains("PRACTICE") {
+        return Err("That's the practice key. Paste the one you copied from the keys page.");
+    }
     if key.len() > provider.max_key_len() || !key.bytes().all(|b| b.is_ascii_graphic()) {
         return Err("That doesn't look like an API key.");
     }
@@ -660,23 +672,28 @@ pub async fn ask_key_status(provider: Option<String>) -> bool {
 }
 
 #[tauri::command]
-pub async fn ask_set_key(key: String, provider: Option<String>) -> Result<(), String> {
+pub async fn ask_set_key(app: tauri::AppHandle, key: String, provider: Option<String>) -> Result<(), String> {
     let p = Provider::parse(provider.as_deref());
     let key = validate_key(p, &key).map_err(str::to_string)?;
     blocking(move || entry(p).and_then(|e| e.set_password(&key)))
         .await
         .ok_or_else(|| "The keychain didn't answer.".to_string())?
-        .map_err(|_| "I couldn't save the key to your keychain.".to_string())
+        .map_err(|_| "I couldn't save the key to your keychain.".to_string())?;
+    let _ = app.emit("ask-key-changed", p.id()); // the id only: every window re-asks whether a key exists
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn ask_remove_key(provider: Option<String>) -> Result<(), String> {
+pub async fn ask_remove_key(app: tauri::AppHandle, provider: Option<String>) -> Result<(), String> {
     let p = Provider::parse(provider.as_deref());
     let res = blocking(move || entry(p).and_then(|e| e.delete_credential()))
         .await
         .ok_or_else(|| "The keychain didn't answer.".to_string())?;
     match res {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Ok(()) | Err(keyring::Error::NoEntry) => {
+            let _ = app.emit("ask-key-changed", p.id());
+            Ok(())
+        }
         Err(_) => Err("I couldn't remove the key from your keychain.".to_string()),
     }
 }
@@ -985,7 +1002,7 @@ mod tests {
 
     #[test]
     fn key_validation() {
-        use Provider::{Anthropic, OpenRouter};
+        use Provider::{Anthropic, Groq, OpenRouter};
         assert_eq!(validate_key(OpenRouter, "  sk-or-v1-abc123  ").unwrap(), "sk-or-v1-abc123");
         assert_eq!(validate_key(OpenRouter, "not-an-openrouter-prefix").unwrap(), "not-an-openrouter-prefix"); // still accepted
         assert_eq!(validate_key(Anthropic, "  sk-ant-abc123  ").unwrap(), "sk-ant-abc123");
@@ -996,6 +1013,12 @@ mod tests {
         }
         assert!(validate_key(OpenRouter, &"k".repeat(400)).is_ok());
         assert!(validate_key(OpenRouter, &"k".repeat(401)).is_err());
+        // The welcome guide's illustrated practice keys are display text, never a real key.
+        for p in [OpenRouter, Groq, Anthropic] {
+            for fake in ["sk-or-PRACTICE-not-a-real-key", "gsk_PRACTICE-not-a-real-key", "sk-ant-PRACTICE-not-a-real-key"] {
+                assert!(validate_key(p, fake).is_err(), "{fake}");
+            }
+        }
         assert!(validate_key(Anthropic, &"k".repeat(512)).is_ok());
         assert!(validate_key(Anthropic, &"k".repeat(513)).is_err());
     }

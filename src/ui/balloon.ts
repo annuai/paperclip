@@ -48,7 +48,8 @@ export class Balloon implements BalloonLike {
     return this.isVisible;
   }
 
-  speak(text: string, attribution?: string, actions?: BalloonAction[]): Promise<string> {
+  /** `sticky` keeps the line up until it is replaced or closed (the welcome guide's instructions). */
+  speak(text: string, attribution?: string, actions?: BalloonAction[], opts: { sticky?: boolean } = {}): Promise<string> {
     this.end('closed', true);
     this.hasActions = !!actions?.length;
     return new Promise<string>((resolve) => {
@@ -99,7 +100,7 @@ export class Balloon implements BalloonLike {
         attrEl?.classList.remove('pending');
         actionsEl?.classList.remove('pending');
         const hold = actionsEl ? ACTION_TIMEOUT_MS : Math.min(12000, Math.max(3000, 1500 + 60 * text.length));
-        this.timer = setTimeout(() => this.end('done'), hold);
+        if (!opts.sticky) this.timer = setTimeout(() => this.end('done'), hold);
       };
       this.skip = complete;
       if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) {

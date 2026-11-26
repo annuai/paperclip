@@ -81,8 +81,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         true,
         &[&ask_open, &ask_sep1, &ask_provider_openrouter, &ask_provider_groq, &ask_provider_anthropic, &ask_sep2, &ask_key, &ask_remove, &ask_sep3, &ask_free, &ask_haiku, &ask_other],
     )?;
-    let style_classic = CheckMenuItem::with_id(app, "style-classic", "Classic", true, true, None::<&str>)?;
-    let style_flat = CheckMenuItem::with_id(app, "style-flat", "Flat", true, false, None::<&str>)?;
+    let style_classic = CheckMenuItem::with_id(app, "style-classic", "Classic", true, false, None::<&str>)?;
+    let style_flat = CheckMenuItem::with_id(app, "style-flat", "Flat", true, true, None::<&str>)?;
     let style_outfits = CheckMenuItem::with_id(app, "style-outfits", "Seasonal outfits", true, true, None::<&str>)?;
     let style_sep = PredefinedMenuItem::separator(app)?;
     let style_menu = Submenu::with_items(app, "Style", true, &[&style_classic, &style_flat, &style_sep, &style_outfits])?;
@@ -149,8 +149,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let hide_presenting = CheckMenuItem::with_id(app, "presence-hide", "Hide when presenting", true, true, None::<&str>)?;
     let react_to_music = CheckMenuItem::with_id(app, "presence-music", "Dance to music", true, true, None::<&str>)?;
     let update_check = MenuItem::with_id(app, "update-check", "Check for updates…", true, None::<&str>)?;
+    let guide_open = MenuItem::with_id(app, "guide-open", "Welcome guide…", true, None::<&str>)?;
     let presence_sep = PredefinedMenuItem::separator(app)?;
-    let presence_menu = Submenu::with_items(app, "Presence", true, &[&hide_presenting, &react_to_music, &presence_sep, &update_check])?;
+    let presence_menu = Submenu::with_items(app, "Presence", true, &[&hide_presenting, &react_to_music, &presence_sep, &update_check, &guide_open])?;
     let nap = MenuItem::with_id(app, "nap", "Take a nap", true, None::<&str>)?;
     let quiet = CheckMenuItem::with_id(app, "quiet", "Quiet mode", true, false, None::<&str>)?;
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
