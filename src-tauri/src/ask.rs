@@ -10,6 +10,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
+use tauri::Emitter;
 
 const KEYCHAIN_SERVICE: &str = "app.paperclip.desktop";
 const OPENROUTER_ACCOUNT: &str = "openrouter-api-key";
@@ -72,6 +73,14 @@ impl Provider {
             Some("anthropic") => Provider::Anthropic,
             Some("groq") => Provider::Groq,
             _ => Provider::OpenRouter,
+        }
+    }
+    /// The id JS uses.
+    fn id(self) -> &'static str {
+        match self {
+            Provider::OpenRouter => "openrouter",
+            Provider::Groq => "groq",
+            Provider::Anthropic => "anthropic",
         }
     }
     fn account(self) -> &'static str {
@@ -660,23 +669,28 @@ pub async fn ask_key_status(provider: Option<String>) -> bool {
 }
 
 #[tauri::command]
-pub async fn ask_set_key(key: String, provider: Option<String>) -> Result<(), String> {
+pub async fn ask_set_key(app: tauri::AppHandle, key: String, provider: Option<String>) -> Result<(), String> {
     let p = Provider::parse(provider.as_deref());
     let key = validate_key(p, &key).map_err(str::to_string)?;
     blocking(move || entry(p).and_then(|e| e.set_password(&key)))
         .await
         .ok_or_else(|| "The keychain didn't answer.".to_string())?
-        .map_err(|_| "I couldn't save the key to your keychain.".to_string())
+        .map_err(|_| "I couldn't save the key to your keychain.".to_string())?;
+    let _ = app.emit("ask-key-changed", p.id()); // the id only: every window re-asks whether a key exists
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn ask_remove_key(provider: Option<String>) -> Result<(), String> {
+pub async fn ask_remove_key(app: tauri::AppHandle, provider: Option<String>) -> Result<(), String> {
     let p = Provider::parse(provider.as_deref());
     let res = blocking(move || entry(p).and_then(|e| e.delete_credential()))
         .await
         .ok_or_else(|| "The keychain didn't answer.".to_string())?;
     match res {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Ok(()) | Err(keyring::Error::NoEntry) => {
+            let _ = app.emit("ask-key-changed", p.id());
+            Ok(())
+        }
         Err(_) => Err("I couldn't remove the key from your keychain.".to_string()),
     }
 }

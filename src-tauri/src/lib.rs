@@ -2,7 +2,6 @@ mod ask;
 mod calendar;
 mod clickthrough;
 mod files;
-#[allow(dead_code)] // wired up by the window commands in the next change
 mod guide;
 mod session;
 mod system;
@@ -32,6 +31,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(clickthrough::HitState::default()))
         .manage(files::DropState::default())
         .on_window_event(|window, event| {
+            guide::on_window_event(window, event);
             if let tauri::WindowEvent::DragDrop(e) = event {
                 files::handle_drag_drop(window, e);
             }
@@ -51,6 +51,8 @@ pub fn run() {
             ask::ask_set_key,
             ask::ask_remove_key,
             ask::ask_focus,
+            guide::guide_open,
+            guide::guide_open_key_page,
             files::zip_dropped,
             files::clear_dropped,
             files::reveal_zip,

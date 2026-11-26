@@ -4,6 +4,8 @@
 //! own pages, and each command checks which window is calling.
 
 use serde::Deserialize;
+use serde_json::json;
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window, WindowEvent};
 
 pub const LABEL: &str = "welcome";
 
@@ -80,6 +82,71 @@ pub(crate) fn platform() -> &'static str {
     } else {
         "linux"
     }
+}
+
+const SIZE: (f64, f64) = (640.0, 520.0);
+
+/// Creates the welcome window, or brings the open one forward and sends it to `start`.
+/// Async on purpose: building a window from a synchronous command deadlocks on Windows.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // the arguments are the command's JS interface
+pub async fn guide_open(app: AppHandle, window: WebviewWindow, style: String, provider: String, models: GuideModels, start: String, outfit: Option<String>) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("not allowed".to_string());
+    }
+    let err = |e: tauri::Error| e.to_string();
+    if let Some(open) = app.get_webview_window(LABEL) {
+        open.unminimize().map_err(err)?;
+        open.show().map_err(err)?;
+        open.set_focus().map_err(err)?;
+        return app.emit_to(LABEL, "guide:goto", json!({ "start": start })).map_err(err);
+    }
+    let url = guide_url(&GuideQuery { style: &style, provider: &provider, start: &start, outfit: outfit.as_deref(), models: &models, platform: platform() })?;
+    let builder = WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::App(url.into()))
+        .title("Welcome to Paperclip")
+        .inner_size(SIZE.0, SIZE.1)
+        .resizable(false)
+        .maximizable(false)
+        .visible(false)
+        .on_navigation(|u| nav_allowed(u.as_str(), cfg!(debug_assertions)));
+    #[cfg(target_os = "macos")]
+    let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    let guide = builder.build().map_err(err)?;
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let area = monitor.work_area();
+        let k = monitor.scale_factor();
+        let (x, y) = place(
+            (f64::from(area.position.x), f64::from(area.position.y), f64::from(area.size.width), f64::from(area.size.height)),
+            (SIZE.0 * k, SIZE.1 * k),
+        );
+        let _ = guide.set_position(PhysicalPosition::new(x, y));
+    }
+    // A Dock icon and a Cmd+Tab entry while it is open, so the user can come back from the browser.
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    guide.show().map_err(err)?;
+    guide.set_focus().map_err(err)
+}
+
+/// Opens one provider's key page in the default browser.
+#[tauri::command]
+pub fn guide_open_key_page(window: WebviewWindow, provider: String) -> Result<(), String> {
+    if window.label() != LABEL {
+        return Err("not allowed".to_string());
+    }
+    let url = key_page_url(&provider).ok_or_else(|| "unknown provider".to_string())?;
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|_| "I couldn't open your browser.".to_string())
+}
+
+/// However the guide closes, drop the Dock icon again and tell the pet to come home.
+pub fn on_window_event(window: &Window, event: &WindowEvent) {
+    if window.label() != LABEL || !matches!(event, WindowEvent::Destroyed) {
+        return;
+    }
+    let app = window.app_handle();
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+    let _ = app.emit_to("main", "guide-state", json!({ "open": false }));
 }
 
 #[cfg(test)]

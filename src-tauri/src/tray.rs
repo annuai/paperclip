@@ -149,8 +149,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let hide_presenting = CheckMenuItem::with_id(app, "presence-hide", "Hide when presenting", true, true, None::<&str>)?;
     let react_to_music = CheckMenuItem::with_id(app, "presence-music", "Dance to music", true, true, None::<&str>)?;
     let update_check = MenuItem::with_id(app, "update-check", "Check for updates…", true, None::<&str>)?;
+    let guide_open = MenuItem::with_id(app, "guide-open", "Welcome guide…", true, None::<&str>)?;
     let presence_sep = PredefinedMenuItem::separator(app)?;
-    let presence_menu = Submenu::with_items(app, "Presence", true, &[&hide_presenting, &react_to_music, &presence_sep, &update_check])?;
+    let presence_menu = Submenu::with_items(app, "Presence", true, &[&hide_presenting, &react_to_music, &presence_sep, &update_check, &guide_open])?;
     let nap = MenuItem::with_id(app, "nap", "Take a nap", true, None::<&str>)?;
     let quiet = CheckMenuItem::with_id(app, "quiet", "Quiet mode", true, false, None::<&str>)?;
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);

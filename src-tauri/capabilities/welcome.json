@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "welcome",
+  "description": "Welcome guide window: events, close and drag only",
+  "windows": ["welcome"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:event:allow-emit-to",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging"
+  ]
+}
