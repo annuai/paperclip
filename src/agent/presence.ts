@@ -76,6 +76,16 @@ export class Presence {
     this.hiddenByMe = false;
   }
 
+  /** True while the current hide is Presence's own (full screen), not the user's. */
+  isAutoHidden(): boolean {
+    return this.hiddenByMe;
+  }
+
+  /** The host kept him hidden for full screen (he came home from the welcome guide): show him when it ends. */
+  adoptHidden(): void {
+    this.hiddenByMe = true;
+  }
+
   setConfig(cfg: PresenceConfig, ctx: PresenceCtx): Reaction[] {
     const before = this.cfg;
     this.cfg = { ...cfg };

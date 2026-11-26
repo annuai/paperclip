@@ -20,7 +20,7 @@ export type Action =
   | { type: 'think'; name: AnimName; stopped: () => boolean }
   | { type: 'wait'; ms: number }
   | { type: 'show' }
-  | { type: 'hide' };
+  | { type: 'hide'; exit?: AnimName };
 
 interface QueueItem { action: Action; resolve: () => void }
 
@@ -102,7 +102,7 @@ export class Agent {
   }
   wait(ms: number): Promise<void> { return this.enqueue({ type: 'wait', ms }); }
   show(): Promise<void> { return this.enqueue({ type: 'show' }); }
-  hide(): Promise<void> { return this.enqueue({ type: 'hide' }); }
+  hide(exit?: AnimName): Promise<void> { return this.enqueue({ type: 'hide', exit }); }
 
   /** Counts interrupts: a long-running routine can compare it to notice that something else took over. */
   get epoch(): number {
@@ -213,7 +213,7 @@ export class Agent {
         await this.animator.play(this.animations[this.pickOf(this.enters)]);
         return;
       case 'hide':
-        await this.animator.play(this.animations[this.pickOf(this.exits)]);
+        await this.animator.play(this.animations[a.exit ?? this.pickOf(this.exits)]);
         await this.win.hide();
         this.isHidden = true;
         return;
