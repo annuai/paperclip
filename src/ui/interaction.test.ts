@@ -270,10 +270,41 @@ describe('right click twice', () => {
     const { host, handlers } = setup();
     const wire = host.querySelector('#wire') as SVGElement;
     rc(wire);
-    vi.advanceTimersByTime(800);
+    vi.advanceTimersByTime(1500);
     rc(wire);
     vi.advanceTimersByTime(800);
     expect(handlers.contextMenu).toHaveBeenCalledTimes(2);
+    expect(handlers.openAsk).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+  it('a trackpad-paced second right click that lands on the open menu still opens Ask', () => {
+    vi.useFakeTimers();
+    const { host, handlers } = setup();
+    const menu = document.createElement('div');
+    menu.className = 'menu';
+    document.body.append(menu);
+    rc(host.querySelector('#wire') as SVGElement);
+    vi.advanceTimersByTime(700); // the menu is open under the pointer by now
+    rc(menu, 53, 55);
+    vi.advanceTimersByTime(1000);
+    expect(handlers.openAsk).toHaveBeenCalledTimes(1);
+    expect(handlers.contextMenu).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+  it('a right click on the menu long afterwards, or somewhere else, does nothing', () => {
+    vi.useFakeTimers();
+    const { host, handlers } = setup();
+    const menu = document.createElement('div');
+    menu.className = 'menu';
+    document.body.append(menu);
+    const wire = host.querySelector('#wire') as SVGElement;
+    rc(wire);
+    vi.advanceTimersByTime(1500);
+    rc(menu);
+    rc(wire, 50, 50);
+    vi.advanceTimersByTime(600);
+    rc(menu, 150, 160);
+    vi.advanceTimersByTime(1000);
     expect(handlers.openAsk).not.toHaveBeenCalled();
     vi.useRealTimers();
   });

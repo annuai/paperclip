@@ -22,6 +22,10 @@ const CLICK_DELAY = 250;
  *  one alone opens the menu once the wait is over. */
 const RIGHT_DOUBLE_MS = 400;
 const RIGHT_DOUBLE_DIST = 12;
+/** Two-finger clicks on a trackpad are often slower: a second one this soon still opens Ask, even though the menu
+ *  is already up and under the pointer. */
+const RIGHT_LATE_MS = 1000;
+const RIGHT_LATE_DIST = 24;
 
 export function attachInteraction(
   target: HTMLElement,
@@ -39,6 +43,7 @@ export function attachInteraction(
   let ctxTimer: ReturnType<typeof setTimeout> | null = null;
   let ctxX = 0;
   let ctxY = 0;
+  let menuFrom: { at: number; x: number; y: number } | null = null; // the right click that opened the menu
   let clicks = 0; // our own counter: more predictable than MouseEvent.detail across webviews
 
   const clearClick = () => {
@@ -111,13 +116,31 @@ export function attachInteraction(
     clearCtx();
     ctxX = e.clientX;
     ctxY = e.clientY;
-    ctxTimer = setTimeout(() => { ctxTimer = null; h.contextMenu(ctxX, ctxY); }, RIGHT_DOUBLE_MS);
+    const at = Date.now();
+    menuFrom = null;
+    ctxTimer = setTimeout(() => {
+      ctxTimer = null;
+      menuFrom = { at, x: ctxX, y: ctxY };
+      h.contextMenu(ctxX, ctxY);
+    }, RIGHT_DOUBLE_MS);
+  };
+  const onLateCtx = (e: MouseEvent) => {
+    const first = menuFrom;
+    if (!first) return;
+    const on = e.target instanceof Element && (target.contains(e.target) || e.target.closest('.menu') !== null);
+    if (!on || Date.now() - first.at > RIGHT_LATE_MS || Math.hypot(e.clientX - first.x, e.clientY - first.y) > RIGHT_LATE_DIST) return;
+    menuFrom = null;
+    e.preventDefault();
+    e.stopPropagation(); // neither the menu nor the clip sees it as a new right click
+    clearClick();
+    h.openAsk();
   };
   const onBlur = () => { armed = false; midArmed = false; };
 
   target.addEventListener('mousedown', onDown);
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
+  window.addEventListener('contextmenu', onLateCtx, true);
   target.addEventListener('contextmenu', onCtx);
   window.addEventListener('blur', onBlur);
   return () => {
@@ -127,6 +150,7 @@ export function attachInteraction(
     target.removeEventListener('mousedown', onDown);
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('mouseup', onUp);
+    window.removeEventListener('contextmenu', onLateCtx, true);
     target.removeEventListener('contextmenu', onCtx);
     window.removeEventListener('blur', onBlur);
   };
