@@ -163,3 +163,20 @@ describe('Balloon prompt (Ask Paperclip input)', () => {
     }
   });
 });
+
+describe('Balloon sticky', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('a sticky line stays until something replaces or closes it', async () => {
+    const { b } = setup();
+    let result: string | null = null;
+    void b.speak('Click me once.', undefined, undefined, { sticky: true }).then((r) => (result = r));
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(result).toBeNull();
+    expect(b.visible).toBe(true);
+    b.close();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(result).toBe('closed');
+  });
+});

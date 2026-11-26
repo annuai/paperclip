@@ -1,5 +1,5 @@
 // Paperclip as the guide's host: the real renderer and animator, with the pet's gestures practised in place.
-import { ANIMATIONS } from '../anim/animations';
+import { ANIMATIONS, SHOWY_ANIMS } from '../anim/animations';
 import { Animator } from '../anim/animator';
 import { HIDDEN, NEUTRAL } from '../anim/pose';
 import type { Pose } from '../anim/pose';
@@ -9,15 +9,20 @@ import type { OutfitName } from '../art/outfits';
 import type { Style } from '../art/style';
 import { EyeTracker, ZERO_TARGET, computeTarget } from '../agent/eyeFollow';
 import type { Pt } from '../agent/eyeFollow';
+import { MAX_QUESTION_CHARS } from '../agent/ask';
 import type { ContentKind, ContentProvider } from '../content/provider';
 import { attachInteraction } from '../ui/interaction';
 import { ContextMenu } from '../ui/contextMenu';
-import type { MenuItem } from '../ui/contextMenu';
+import { buildMenu } from '../ui/menuModel';
+import { Balloon } from '../ui/balloon';
+import { DEFAULTS } from '../platform/settingsParse';
+import { pick } from '../util/rng';
 import { COPY } from './copy';
 import type { Lesson } from './flow';
 import { DOUBLE_CONTEXT_MS, keyGesture } from './stageKeys';
 
 const FOLLOW_MS = 4000;
+const TALK_MS = 2500; // an instruction stays up, but he only gestures for a moment
 const SLIDE_LIMIT = 52; // viewBox units either way: he stays on his mat
 const FLING_SPEED = 1.2; // px per ms at release
 const ROUGH_SPEED = 2.4;
@@ -31,6 +36,14 @@ export interface Stage {
   /** Turn his eyes to a point in the window (null = straight ahead again). */
   lookAt(p: Pt | null): void;
   setStyle(s: Style): void;
+  /** The current instruction: stays in his balloon until the next one. Waits while he is saying something else. */
+  instruct(text: string): void;
+  /** Something he says (a joke, an answer); the instruction comes back afterwards. */
+  speak(text: string, attribution?: string): void;
+  /** Forget what he was saying (a new screen). */
+  hush(): void;
+  /** The real Ask input in his balloon; null when cancelled. */
+  prompt(text: string, placeholder: string): Promise<string | null>;
   onGesture(cb: (l: Lesson) => void): void;
   onAsk(cb: () => void): void;
   closeMenu(): void;
@@ -40,9 +53,9 @@ export interface StageOpts {
   style: Style;
   outfit: OutfitName;
   reducedMotion: boolean;
+  balloonEl: HTMLElement;
   menuEl: HTMLElement;
   content: ContentProvider;
-  say(text: string, attribution?: string): void;
   onStyle(s: Style): void;
 }
 
@@ -64,7 +77,42 @@ export function createStage(host: HTMLElement, o: StageOpts): Stage {
   });
 
   const play = (name: AnimName): Promise<void> => animator.play(ANIMATIONS[name]).then(() => undefined);
-  const speak = (kind: ContentKind) => void o.content.next(kind).then((c) => o.say(c.text, c.attribution));
+
+  // ---- his balloon: the pet's own, typewriter and all ----
+  const balloon = new Balloon(o.balloonEl, () => undefined);
+  let instruction = '';
+  let shown = ''; // the instruction currently on screen
+  let line = 0; // bumps whenever something new is said, so a finished line knows whether it still matters
+  let speaking = false;
+  let talkTimer: ReturnType<typeof setTimeout> | null = null;
+  const talk = (ms?: number) => {
+    if (talkTimer !== null) clearTimeout(talkTimer);
+    talkTimer = null;
+    if (animator.animating) return; // a hop or a celebration plays out
+    void play('Explain');
+    if (ms) talkTimer = setTimeout(() => animator.exit(), ms);
+  };
+  const showInstruction = () => {
+    if (!instruction || speaking || shown === instruction) return;
+    shown = instruction;
+    line++;
+    talk(TALK_MS);
+    void balloon.speak(instruction, undefined, undefined, { sticky: true });
+  };
+  const say = (text: string, attribution?: string) => {
+    const mine = ++line;
+    speaking = true;
+    shown = '';
+    animator.stop();
+    talk();
+    void balloon.speak(text, attribution).then(() => {
+      if (mine !== line) return;
+      speaking = false;
+      animator.exit();
+      showInstruction();
+    });
+  };
+  const fetchAndSay = (kind: ContentKind) => void o.content.next(kind).then((c) => say(c.text, c.attribution));
 
   // ---- eyes ----
   let lastMove = 0;
@@ -75,7 +123,8 @@ export function createStage(host: HTMLElement, o: StageOpts): Stage {
     // Targets arrive once (a lesson, a click) rather than in a stream, so settle on them in one go.
     const dt = following && p ? now - lastMove : 100;
     lastMove = now;
-    const target = p ? computeTarget(renderer.eyeCentres(), p, o.reducedMotion) : ZERO_TARGET;
+    const from = (host.closest('#stage') as HTMLElement).getBoundingClientRect(); // eye centres are stage-relative
+    const target = p ? computeTarget(renderer.eyeCentres(), { x: p.x - from.left, y: p.y - from.top }, o.reducedMotion) : ZERO_TARGET;
     eyes.update(target, dt);
     if (!following) for (let i = 0; i < 3; i++) eyes.update(target, 100);
     animator.refresh();
@@ -104,8 +153,9 @@ export function createStage(host: HTMLElement, o: StageOpts): Stage {
     gestureCb('click');
   };
   const doubleClick = () => {
-    void play('Wave');
-    speak('joke');
+    // As on the desktop: a moment's thought, then a joke.
+    void play('Thinking');
+    setTimeout(() => { animator.stop(); fetchAndSay('joke'); }, o.reducedMotion ? 0 : 900);
     gestureCb('doubleClick');
   };
 
@@ -164,34 +214,31 @@ export function createStage(host: HTMLElement, o: StageOpts): Stage {
     return Promise.resolve();
   };
 
-  // ---- the demo menu ----
+  // ---- his right-click menu: the real one; what needs the desktop says so ----
   let style = o.style;
   const menu = new ContextMenu(o.menuEl, (id) => {
-    if (id === 'demo-hi') {
+    if (id === 'hi') {
       void play('Greeting');
-      speak('greeting');
-    } else if (id === 'demo-joke') speak('joke');
-    else if (id === 'demo-quote') speak('quote');
+      fetchAndSay('greeting');
+    } else if (id === 'joke' || id === 'quote' || id === 'tip') fetchAndSay(id);
+    else if (id === 'animate') void play(pick(Math.random, SHOWY_ANIMS));
     else if (id === 'style-classic' || id === 'style-flat') o.onStyle(id === 'style-flat' ? 'flat' : 'classic');
+    else if (id === 'ask-open') askCb();
+    else say(COPY.menus.desktopOnly);
     gestureCb('menuPick');
   }, (visible) => {
     if (!visible && o.menuEl.contains(document.activeElement)) host.focus({ preventScroll: true });
   });
-  const items = (): MenuItem[] => [
-    { id: 'demo-hi', label: 'Say hi' },
-    { id: 'demo-joke', label: 'Tell a joke' },
-    { id: 'demo-quote', label: 'Give a quote' },
-    {
-      id: 'demo-style', label: 'Style',
-      children: [
-        { id: 'style-classic', label: 'Classic', role: 'radio', checked: style === 'classic' },
-        { id: 'style-flat', label: 'Flat', role: 'radio', checked: style === 'flat' },
-      ],
-    },
-    { id: 'demo-note', label: COPY.menus.demoLast, disabled: true, separatorBefore: true },
-  ];
+  const items = () => buildMenu({
+    sleeping: false, quiet: false, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, outfits: true, style,
+    water: { enabled: DEFAULTS.water.enabled, intervalMin: DEFAULTS.water.intervalMin, glassesToday: 0 },
+    stretch: DEFAULTS.stretch, focusLeft: null, calendarSupported: false, meetingHeadsUp: false,
+    ask: { keySet: false, provider: DEFAULTS.askProvider, model: DEFAULTS.askModel, groqModel: DEFAULTS.askGroqModel, claudeModel: DEFAULTS.askClaudeModel },
+  });
+  // x, y arrive in window px; the menu lives on his stage.
   const openMenu = (x: number, y: number) => {
-    menu.open(x, y, items());
+    const r = (host.closest('#stage') as HTMLElement).getBoundingClientRect();
+    menu.open(x - r.left, y - r.top, items());
     gestureCb('contextMenu');
   };
   const openAsk = () => {
@@ -203,8 +250,8 @@ export function createStage(host: HTMLElement, o: StageOpts): Stage {
   attachInteraction(host, {
     click,
     doubleClick,
-    tripleClick: () => speak('quote'),
-    middleClick: () => speak('quote'),
+    tripleClick: () => fetchAndSay('quote'),
+    middleClick: () => fetchAndSay('quote'),
     openAsk,
     contextMenu: openMenu,
     dragStart: () => menu.close(),
@@ -262,6 +309,26 @@ export function createStage(host: HTMLElement, o: StageOpts): Stage {
       style = s;
       renderer.setStyle(s);
       animator.refresh();
+    },
+    instruct(text) {
+      instruction = text;
+      showInstruction();
+    },
+    speak: say,
+    hush() {
+      line++;
+      speaking = false;
+      shown = '';
+      instruction = '';
+      balloon.close();
+    },
+    async prompt(text, placeholder) {
+      const mine = ++line;
+      speaking = true;
+      shown = '';
+      const typed = await balloon.prompt(text, { maxLength: MAX_QUESTION_CHARS, placeholder });
+      if (mine === line) speaking = false;
+      return typed;
     },
     onGesture: (cb) => { gestureCb = cb; },
     onAsk: (cb) => { askCb = cb; },

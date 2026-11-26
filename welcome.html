@@ -10,12 +10,16 @@
   <body class="welcome">
     <div id="guide">
       <div class="drag" data-tauri-drag-region></div>
-      <aside class="stage">
-        <div id="character" tabindex="0" role="button" aria-label="Paperclip, practice here"></div>
+      <!-- The pet's own stage, balloon and menu, at the pet's size: practice here is the real thing. -->
+      <aside class="side">
+        <div id="stage">
+          <div id="balloon" class="balloon hidden" role="status" aria-live="polite"><div class="balloon-text"></div></div>
+          <div id="character" tabindex="0" role="button" aria-label="Paperclip, practice here"></div>
+          <div id="menu" class="menu hidden" role="menu"></div>
+        </div>
       </aside>
       <main class="pane"></main>
       <footer class="foot"></footer>
-      <div id="menu" class="menu hidden" role="menu"></div>
       <div id="announce" class="sr" aria-live="polite"></div>
     </div>
     <script type="module" src="/src/welcome/main.ts"></script>

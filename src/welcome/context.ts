@@ -12,10 +12,10 @@ export interface ScreenContext {
   platform: GuidePlatform;
   content: ContentProvider;
   reducedMotion: boolean;
-  /** The pane balloon: the line, and optionally a smaller marigold line under it. */
-  say(text: string, sub?: string): void;
-  /** A one-off remark that replaces whatever he was saying. */
-  interject(text: string): void;
+  /** The current instruction, in his balloon. */
+  say(text: string): void;
+  /** A one-off remark that replaces whatever he was saying; the instruction comes back after it. */
+  interject(text: string, attribution?: string): void;
   announce(text: string): void;
   /** Model id for the current provider; '' means the provider's default. */
   model(): string;

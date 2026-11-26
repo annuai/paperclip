@@ -2,6 +2,7 @@ import type { Platform } from './providers';
 
 /** Every string the guide shows (spec section 5). */
 export const COPY = {
+  titles: { hello: 'Welcome', try: 'Try me', menus: 'Two menus', key: 'Get your key', ask: 'Ask me something' },
   hello: {
     balloon: "Hi, I'm Paperclip! I usually live in the corner of your screen. I've moved in here for a minute to show you around.",
     skip: 'Skip the tour',
@@ -31,7 +32,8 @@ export const COPY = {
     holdThought: "Hold that thought: we'll ask for real in two steps.",
     trayFound: 'There it is! Click it any time to bring me back.',
     trayNote: 'Right-click the icon for the full menu.',
-    demoLast: 'The full menu is on the desktop.',
+    desktopOnly: 'That one works on your desktop, once the tour is over.',
+    askPrompt: "What's on your mind?",
   },
   key: {
     practiseFirst: "Let's practise first. Click Sign in.",

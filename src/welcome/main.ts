@@ -15,7 +15,6 @@ import { createPlatform } from './platform';
 import { mountScreen } from './screens';
 import { createStage } from './stage';
 
-const SPEECH_MS = 5000;
 const SLIDE_MS = 175; // out, then the same again in
 
 async function boot(): Promise<void> {
@@ -42,40 +41,18 @@ async function boot(): Promise<void> {
   const foot = document.querySelector('.foot') as HTMLElement;
   const live = document.getElementById('announce') as HTMLElement;
 
-  // ---- the balloon: the screen's instruction, or what he just said with the instruction underneath ----
-  const balloon = el('div', 'bal');
-  const line = el('h1');
-  line.tabIndex = -1;
-  const sub = el('p', 'balsub');
-  balloon.append(line, sub);
-  let instruction: [string, string] = ['', ''];
-  let speech: [string, string] | null = null;
-  let speechTimer: ReturnType<typeof setTimeout> | null = null;
-  const paintBalloon = () => {
-    const [main, small] = speech ?? instruction;
-    line.textContent = main;
-    sub.textContent = speech ? [speech[1], instruction[1] || instruction[0]].filter(Boolean).join(' · ') : small;
-    sub.hidden = !sub.textContent;
-  };
-  const hush = () => {
-    if (speechTimer !== null) clearTimeout(speechTimer);
-    speechTimer = null;
-    speech = null;
-  };
+  // The pane's heading: where focus lands on each screen. What he says is in his own balloon.
+  const title = el('h1', 'title');
+  title.tabIndex = -1;
 
   const content = new LocalContentProvider();
   const stage = createStage(document.getElementById('character') as HTMLElement, {
     style,
     outfit: normalizeOutfit(q.get('outfit')),
     reducedMotion,
+    balloonEl: document.getElementById('balloon') as HTMLElement,
     menuEl: document.getElementById('menu') as HTMLElement,
     content,
-    say(text, attribution) {
-      hush();
-      speech = [text, attribution ? `— ${attribution}` : ''];
-      speechTimer = setTimeout(() => { hush(); paintBalloon(); }, SPEECH_MS);
-      paintBalloon();
-    },
     onStyle(s: Style) {
       root.dataset.style = s;
       stage.setStyle(s);
@@ -106,14 +83,8 @@ async function boot(): Promise<void> {
     platform,
     content,
     reducedMotion,
-    say(text, small = '') {
-      instruction = [text, small];
-      paintBalloon();
-    },
-    interject(text) {
-      hush();
-      context.say(text);
-    },
+    say: (text) => stage.instruct(text),
+    interject: (text, attribution) => stage.speak(text, attribution),
     announce(text) {
       live.textContent = text;
     },
@@ -147,17 +118,18 @@ async function boot(): Promise<void> {
   const mount = (first: boolean) => {
     view?.destroy();
     stage.closeMenu();
-    hush();
+    stage.hush();
     mounted = state.screen;
+    title.textContent = COPY.titles[state.screen];
     pane.textContent = '';
     pane.dataset.screen = state.screen;
     const body = el('div', 'screen');
-    pane.append(balloon, body);
+    pane.append(title, body);
     view = mountScreen(state.screen, body, context);
     view.update();
     pane.classList.remove('out');
     if (!first) {
-      line.focus({ preventScroll: true });
+      title.focus({ preventScroll: true });
       context.announce(`Step ${SCREENS.indexOf(state.screen) + 1} of ${SCREENS.length}`);
     }
   };

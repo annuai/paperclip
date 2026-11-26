@@ -11,37 +11,29 @@
   --line: rgba(0, 0, 0, 0.14); --frame-border: 1.5px; --radius: 8px; --bal-radius: 10px;
   --font: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-html, body.welcome { width: 640px; height: 520px; overflow: hidden; background: var(--page); color: var(--text); font-family: var(--font); }
+html, body.welcome { width: 720px; height: 520px; overflow: hidden; background: var(--page); color: var(--text); font-family: var(--font); }
 body.welcome * { box-sizing: border-box; }
 body.welcome [hidden] { display: none !important; }
-#guide { position: relative; width: 640px; height: 520px; }
+#guide { position: relative; width: 720px; height: 520px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .drag { position: absolute; left: 0; right: 0; top: 0; height: 18px; z-index: 5; }
 ::selection { background: var(--accent); color: var(--on-accent); }
 
-/* ---- stage ---- */
-.stage { position: absolute; left: 0; top: 0; bottom: 0; width: 210px; background: var(--stage); border-right: 6px solid var(--edge); }
-[data-style="classic"] .stage { border-right-width: 1.5px; }
-body.welcome #character { left: 2px; right: auto; bottom: 32px; width: 200px; height: 242px; border-radius: 12px; outline: none; }
-body.welcome #character svg { width: 200px; height: 242px; }
+/* ---- his side: the pet's own 320x380 stage, balloon and menu (styles.css), on a marigold wall ---- */
+.side { position: absolute; left: 0; top: 0; bottom: 0; width: 320px; background: var(--stage); border-right: 6px solid var(--edge); }
+[data-style="classic"] .side { border-right-width: 1.5px; }
+body.welcome #stage { position: absolute; left: 0; bottom: 28px; width: 314px; height: 380px; }
+body.welcome #character { border-radius: 12px; outline: none; animation: breathe 3s ease-in-out infinite; transform-origin: 50% 90%; }
 body.welcome #character:focus-visible { outline: 2px solid #18202e; outline-offset: -2px; }
-[data-style="flat"] .stage #matSheet > path:nth-child(2) { fill: #f4f1ea; }
-body.welcome #character svg #body { transform-box: view-box; }
-.stage #character { animation: breathe 3s ease-in-out infinite; transform-origin: 50% 90%; }
+[data-style="flat"] .side #matSheet > path:nth-child(2) { fill: #f4f1ea; }
 @keyframes breathe { 50% { transform: scale(1.015, 0.985); } }
 
-/* ---- pane and balloon ---- */
-.pane { position: absolute; left: 236px; top: 20px; width: 376px; height: 456px; transition: opacity 175ms ease, transform 175ms ease; }
+/* ---- pane ---- */
+.pane { position: absolute; left: 344px; top: 28px; width: 352px; height: 448px; transition: opacity 175ms ease, transform 175ms ease; }
 .pane.out { opacity: 0; transform: translateX(24px); }
-.bal { position: relative; background: var(--panel); color: var(--on-panel); border: var(--frame-border) solid #3a3a3a; border-radius: var(--bal-radius); padding: 11px 18px; }
-[data-style="classic"] .bal { background: #fff8c4; }
-.bal::before { content: ""; position: absolute; left: -13px; top: 18px; border: 9px solid transparent; border-left: 0; border-right: 13px solid var(--panel); }
-[data-style="classic"] .bal::before { border-right-color: #3a3a3a; }
-.bal h1 { margin: 0; font-size: 18px; font-weight: 400; line-height: 1.4; outline: none; }
-.bal h1:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
-.balsub { margin: 4px 0 0; font-size: 12px; line-height: 1.35; color: var(--accent); letter-spacing: 0.04em; }
-[data-style="classic"] .balsub { color: #555; }
-.screen { margin-top: 10px; }
+.title { margin: 0; font-size: 28px; font-weight: 600; line-height: 1.15; text-transform: uppercase; letter-spacing: 0.04em; outline: none; }
+.title:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.screen { margin-top: 12px; }
 .note { margin: 8px 0 0; font-size: 12px; line-height: 1.4; opacity: 0.72; }
 .under { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
 .under .note { margin: 0; }
@@ -65,13 +57,13 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .eye { border: 0; background: none; font-size: 11px; font-weight: 500; text-transform: uppercase; color: #18202e; opacity: 0.7; }
 
 /* ---- footer and paperclip chain ---- */
-.foot { position: absolute; left: 236px; right: 28px; bottom: 12px; height: 28px; display: flex; align-items: center; justify-content: space-between; }
-.foot .ghost { width: 108px; text-align: left; white-space: nowrap; }
+.foot { position: absolute; left: 344px; right: 24px; bottom: 12px; height: 28px; display: flex; align-items: center; justify-content: space-between; }
+.foot .ghost { min-width: 58px; text-align: left; white-space: nowrap; }
 .foot .forward { text-align: right; }
 .foot .forward.primary { text-align: center; opacity: 1; background: var(--accent); color: var(--on-accent); border-radius: 8px; padding: 6px 14px; }
-.chain { display: flex; gap: 2px; }
-.chain span { width: 38px; height: 20px; display: grid; place-items: center; color: var(--line); transition: color 300ms, transform 300ms; }
-.chain svg { transform: rotate(90deg); }
+.chain { display: flex; gap: 0; }
+.chain span { width: 30px; height: 20px; display: grid; place-items: center; color: var(--line); transition: color 300ms, transform 300ms; }
+.chain svg { width: 13px; height: 29px; transform: rotate(90deg); }
 .chain .on { color: var(--accent); }
 .chain .now { transform: scale(1.18); }
 
@@ -126,8 +118,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .row b { display: block; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
 .row span { display: block; font-size: 13px; line-height: 1.35; }
 .row .state { font-style: normal; font-size: 11px; font-weight: 600; text-transform: uppercase; }
-.askbox { margin-top: 10px; }
-body.welcome .menu { z-index: 20; }
 
 /* ---- key screen ---- */
 .tabs { display: flex; gap: 20px; }
@@ -155,7 +145,7 @@ body.welcome .menu { z-index: 20; }
 .scene button:disabled { opacity: 0.4; }
 .film[data-at="3"] .chip:disabled, .film[data-at="4"] .chip:disabled, .film[data-at="4"] .practice:disabled { opacity: 1; }
 .scene button:focus-visible { outline: 2px solid var(--on-panel); outline-offset: 2px; }
-.scene .cursor { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 3; transform: translate(300px, 126px); transition: transform 700ms cubic-bezier(0.5, 0, 0.3, 1); }
+.scene .cursor { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 3; transform: translate(276px, 126px); transition: transform 700ms cubic-bezier(0.5, 0, 0.3, 1); }
 .scene .ring.aim { margin: -15px; pointer-events: none; z-index: 2; }
 .scene.demo .ring.aim { animation: aim 1.2s ease-out 600ms 2; }
 .film[data-at="4"] .cursor, .film[data-at="4"] .ring.aim { display: none; }
@@ -189,7 +179,7 @@ body.welcome .menu { z-index: 20; }
 
 /* ---- at rest ---- */
 /* Only the loops pause; one-shot entrances must still finish. */
-.paused .stage #character, .paused .active *, .paused .scene .ring { animation-play-state: paused !important; }
+.paused #character, .paused .active *, .paused .scene .ring { animation-play-state: paused !important; }
 .reduced *, .reduced *::before, .reduced *::after { animation: none !important; transition: none !important; }
 .reduced .active .ha, .reduced .active .minimenu { opacity: 1; }
 .reduced .active .ring { opacity: 1; }
@@ -205,10 +195,6 @@ body.welcome .menu { z-index: 20; }
 .ha { top: 8px; }
 .grid + .under { margin-top: 8px; }
 .grid ~ .note { margin-top: 4px; font-size: 11px; }
-body.welcome .menu .item.disabled { height: auto; line-height: 1.35; padding: 6px 12px; white-space: normal; }
-.pane[data-screen="hello"] .bal { padding: 18px 22px; }
-.pane[data-screen="hello"] .bal h1 { font-size: 25px; line-height: 1.35; }
-.pane[data-screen="hello"] .screen { margin-top: 16px; }
 
 .textbtn { white-space: nowrap; }
 .keybody .under .note { font-size: 11px; }

@@ -26,7 +26,7 @@ export function mountAskScreen(root: HTMLElement, c: ScreenContext): ScreenView 
       chips.append(button('chipbtn', a.offline[kind], () => {
         void c.content.next(kind).then((item) => {
           if (!alive) return;
-          c.say(item.text, item.attribution);
+          c.interject(item.text, item.attribution);
           void c.stage.play('Congratulate');
           c.set(markAsked(c.get()));
         });

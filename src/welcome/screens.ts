@@ -93,33 +93,21 @@ function mountTry(root: HTMLElement, c: ScreenContext): ScreenView {
 function mountMenus(root: HTMLElement, c: ScreenContext): ScreenView {
   const m = COPY.menus;
   const rows = el('ol', 'rows');
-  const askBox = el('form', 'field askbox hidden');
-  const box = el('input');
-  box.type = 'text';
-  box.maxLength = 500;
-  box.placeholder = COPY.ask.placeholder;
-  box.setAttribute('aria-label', COPY.ask.placeholder);
-  const send = el('button', 'save', 'Send');
-  send.type = 'submit';
-  askBox.append(box, send);
-  askBox.addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (!box.value.trim()) return;
-    c.set(setDraft(c.get(), box.value.trim()));
-    askBox.classList.add('hidden');
-    c.interject(m.holdThought);
-  });
-  box.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    e.preventDefault(); // closes the box, not the guide
-    askBox.classList.add('hidden');
-  });
   c.stage.onAsk(() => {
-    askBox.classList.remove('hidden');
-    box.focus();
+    void c.stage.prompt(m.askPrompt, COPY.ask.placeholder).then((typed) => {
+      const q = typed?.trim();
+      if (!q) {
+        c.stage.hush();
+        view.update();
+        c.say(m.balloon);
+        return;
+      }
+      c.set(setDraft(c.get(), q));
+      c.interject(m.holdThought);
+    });
   });
   const foot = lessonFoot(c);
-  root.append(rows, askBox, foot.node, el('p', 'note', m.trayNote));
+  root.append(rows, foot.node, el('p', 'note', m.trayNote));
   if (c.platform.sandbox) {
     root.append(button('textbtn', 'Simulate tray click', () => window.dispatchEvent(new CustomEvent('sandbox:tray'))));
   }
@@ -139,15 +127,16 @@ function mountMenus(root: HTMLElement, c: ScreenContext): ScreenView {
       rows.append(li);
     }
     foot.paint(active);
-    c.say(m.balloon, active ? text[active as keyof typeof text] : undefined);
+    c.say(active ? text[active as keyof typeof text] : m.balloon);
   });
-  return {
+  const view: ScreenView = {
     update: pacer.update,
     destroy() {
       pacer.destroy();
-      c.stage.onAsk(() => c.say(text.askBox));
+      c.stage.onAsk(() => c.interject(text.askBox));
     },
   };
+  return view;
 }
 
 export function mountScreen(screen: Screen, root: HTMLElement, c: ScreenContext): ScreenView {

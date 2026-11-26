@@ -483,6 +483,16 @@ ticks, rings, step fill and the chain is `#3a3a3a`. Follows the skin at open and
   uppercase 12 px/600, Marigold underline. Reduced motion: instant.
 - Paused loops (7.6) also pause the idle ghost cursor.
 
+### 7.8 Revision after the first build [User]
+
+"I want the messages to appear on top of the actual paperclip instead of in the window on top - use real behavior of
+paperclip in onboarding." and "Make flat the default theme". These replace sections 6.5 and 7.1 where they differ:
+- The window is 720x520. The left 320 px is the pet's own stage: the same `Balloon`, character size and context menu.
+  Every line he says appears in that balloon; instructions stay up until the next one. The pane has a screen title.
+- The right-click menu is the real one; rows that need the desktop say so. Double right-click opens the real Ask input.
+- Flat is the default style for anyone who has not chosen one.
+- Ask also opens on a trackpad two-finger double tap (macOS Smart Zoom) and on a second right click up to 1 s late.
+
 ## 8. Edge cases and errors
 
 | Case | Behaviour |
