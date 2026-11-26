@@ -2,6 +2,8 @@ mod ask;
 mod calendar;
 mod clickthrough;
 mod files;
+#[allow(dead_code)] // wired up by the window commands in the next change
+mod guide;
 mod session;
 mod system;
 mod tray;

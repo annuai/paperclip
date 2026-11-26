@@ -29,8 +29,8 @@ const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// Server-side refusal fallback (Sonnet 5.5 supports the `"default"` form; Haiku 5.5 has no server-side fallback).
 const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
-const HAIKU: &str = "claude-haiku-5-5";
-const SONNET: &str = "claude-sonnet-5-5";
+pub(crate) const HAIKU: &str = "claude-haiku-5-5";
+pub(crate) const SONNET: &str = "claude-sonnet-5-5";
 const ANTHROPIC_MAX_TOKENS: u32 = 200;
 const REFERER: &str = "https://github.com/annuai/paperclip";
 const APP_TITLE: &str = "Paperclip";
