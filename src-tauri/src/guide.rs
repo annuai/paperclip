@@ -84,7 +84,7 @@ pub(crate) fn platform() -> &'static str {
     }
 }
 
-const SIZE: (f64, f64) = (720.0, 520.0);
+const SIZE: (f64, f64) = (752.0, 520.0);
 
 /// Creates the welcome window, or brings the open one forward and sends it to `start`.
 /// Async on purpose: building a window from a synchronous command deadlocks on Windows.
