@@ -651,6 +651,9 @@ fn validate_key(provider: Provider, raw: &str) -> Result<String, &'static str> {
     if key.is_empty() {
         return Err("That key is empty.");
     }
+    if key.contains("PRACTICE") {
+        return Err("That's the practice key. Paste the one you copied from the keys page.");
+    }
     if key.len() > provider.max_key_len() || !key.bytes().all(|b| b.is_ascii_graphic()) {
         return Err("That doesn't look like an API key.");
     }
@@ -999,7 +1002,7 @@ mod tests {
 
     #[test]
     fn key_validation() {
-        use Provider::{Anthropic, OpenRouter};
+        use Provider::{Anthropic, Groq, OpenRouter};
         assert_eq!(validate_key(OpenRouter, "  sk-or-v1-abc123  ").unwrap(), "sk-or-v1-abc123");
         assert_eq!(validate_key(OpenRouter, "not-an-openrouter-prefix").unwrap(), "not-an-openrouter-prefix"); // still accepted
         assert_eq!(validate_key(Anthropic, "  sk-ant-abc123  ").unwrap(), "sk-ant-abc123");
@@ -1010,6 +1013,12 @@ mod tests {
         }
         assert!(validate_key(OpenRouter, &"k".repeat(400)).is_ok());
         assert!(validate_key(OpenRouter, &"k".repeat(401)).is_err());
+        // The welcome guide's illustrated practice keys are display text, never a real key.
+        for p in [OpenRouter, Groq, Anthropic] {
+            for fake in ["sk-or-PRACTICE-not-a-real-key", "gsk_PRACTICE-not-a-real-key", "sk-ant-PRACTICE-not-a-real-key"] {
+                assert!(validate_key(p, fake).is_err(), "{fake}");
+            }
+        }
         assert!(validate_key(Anthropic, &"k".repeat(512)).is_ok());
         assert!(validate_key(Anthropic, &"k".repeat(513)).is_err());
     }

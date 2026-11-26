@@ -204,6 +204,9 @@ export async function guideOpen(o: GuideOpenOpts): Promise<boolean> {
     return false;
   }
 }
+export async function guideClose(): Promise<void> {
+  await guard('guide_close', () => invoke('guide_close'));
+}
 export async function onAskKeyChanged(cb: (provider: AskProvider) => void): Promise<() => void> {
   return getCurrentWindow().listen<string>('ask-key-changed', (e) => cb(normalizeAskProvider(e.payload)));
 }

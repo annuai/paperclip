@@ -223,7 +223,7 @@ export function mountKeyScreen(root: HTMLElement, c: ScreenContext): ScreenView 
     },
     destroy() {
       rehearsal?.destroy();
-      document.documentElement.classList.remove('paused');
+      document.documentElement.classList.toggle('paused', document.hidden || !document.hasFocus());
       c.stage.lookAt(null);
     },
   };

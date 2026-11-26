@@ -138,6 +138,18 @@ pub fn guide_open_key_page(window: WebviewWindow, provider: String) -> Result<()
     tauri_plugin_opener::open_url(url, None::<&str>).map_err(|_| "I couldn't open your browser.".to_string())
 }
 
+/// The pet gave up waiting for the guide: destroy it, so there are never two of him and no blank window lingers.
+#[tauri::command]
+pub fn guide_close(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("not allowed".to_string());
+    }
+    match app.get_webview_window(LABEL) {
+        Some(guide) => guide.destroy().map_err(|e| e.to_string()),
+        None => Ok(()),
+    }
+}
+
 /// However the guide closes, drop the Dock icon again and tell the pet to come home.
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
     if window.label() != LABEL || !matches!(event, WindowEvent::Destroyed) {

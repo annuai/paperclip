@@ -53,6 +53,7 @@ pub fn run() {
             ask::ask_focus,
             guide::guide_open,
             guide::guide_open_key_page,
+            guide::guide_close,
             files::zip_dropped,
             files::clear_dropped,
             files::reveal_zip,

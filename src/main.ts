@@ -33,7 +33,7 @@ import type { FilesDropped } from './platform/tauri';
 import { LocalContentProvider } from './content/provider';
 import type { ContentKind, ContentProvider } from './content/provider';
 import { loadSettingsWithMeta, locateWindow, restorePosition, saveSettings, savePosition, trackPosition, windowSize } from './platform/settings';
-import { emitToGuide, guideOpen, onAskKeyChanged, onGuideMessage, onGuideState, askQuestion, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMenuPointer, onOutsidePress, setMenuTracking, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import { emitToGuide, guideClose, guideOpen, onAskKeyChanged, onGuideMessage, onGuideState, askQuestion, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMenuPointer, onOutsidePress, setMenuTracking, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
 import type { SystemInfo } from './platform/tauri';
 import { WelcomeBack, WelcomeLines } from './agent/welcomeBack';
 import { EyeFollow, EyeTracker, characterClick, computeTarget } from './agent/eyeFollow';
@@ -563,7 +563,7 @@ async function boot(): Promise<void> {
     await agent.hide(motionQuery.matches ? undefined : 'ExitRollUp');
     sync(false);
     guest = 'away';
-    guideTimer = setTimeout(() => void moveIn(true), GUIDE_READY_MS);
+    guideTimer = setTimeout(() => { void guideClose(); void moveIn(true); }, GUIDE_READY_MS);
     if (!(await guideOpen(guideOptions(start)))) await moveIn(true);
   };
   const moveIn = async (failed = false): Promise<void> => {
@@ -608,11 +608,11 @@ async function boot(): Promise<void> {
   };
   const activeModel = (): string => (askProvider === 'anthropic' ? askClaudeModel : askProvider === 'groq' ? askGroqModel : askModel);
   /** Switching provider: each has its own key, so the key state is re-read, and the chat is forgotten (new recipient). */
-  const setAskProvider = (p: AskProvider) => {
+  const setAskProvider = (p: AskProvider, fromGuide = false) => {
     if (p === askProvider) { sync(); return; }
     askProvider = p;
     void saveSettings({ askProvider });
-    if (guest !== 'none') void emitToGuide('guide:provider', { provider: p });
+    if (guest !== 'none' && !fromGuide) void emitToGuide('guide:provider', { provider: p });
     ask.reset();
     askKeySet = false;
     sync();
@@ -1059,12 +1059,16 @@ async function boot(): Promise<void> {
   }).catch((e) => console.warn('tray listener failed', e));
   void onGuideState((s) => { if (!s.open) void moveIn(); }).catch((e) => console.warn('guide state listener failed', e));
   void onGuideMessage((m) => {
-    if (m.ev === 'guide:ready') stopGuideTimer();
-    else if (m.ev === 'guide:provider') setAskProvider(m.provider);
+    if (m.ev === 'guide:ready') {
+      stopGuideTimer();
+      if (guest === 'none') void guideClose(); // it arrived after he had already come home
+    }
+    else if (m.ev === 'guide:provider') setAskProvider(m.provider, true);
     else if (m.ev === 'guide:style') setStyle(m.style);
     else guideSavedKey = m.keySaved;
   }).catch((e) => console.warn('guide listener failed', e));
-  void onAskKeyChanged(() => {
+  void onAskKeyChanged((changed) => {
+    if (guest === 'away') void askKeyStatus(changed).then((has) => { if (has) guideSavedKey = true; });
     const p = askProvider;
     void askKeyStatus(p).then((has) => { if (askProvider === p) { askKeySet = has; sync(); } });
   }).catch((e) => console.warn('key listener failed', e));
