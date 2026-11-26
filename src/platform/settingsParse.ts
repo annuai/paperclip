@@ -40,12 +40,13 @@ export interface Settings {
   askModel: AskModel; // Ask Paperclip: an OpenRouter model id (default free 'google/gemma-4-31b-it:free'). The API key itself is NOT a setting: it lives in the OS keychain.
   askIntroSeen: boolean; // the one-time "only what you type is sent to the provider" line has been shown
   updates: UpdateState; // daily silent update check: when it last ran and the newest version he already mentioned
+  guideSeen: number; // welcome guide: 0 until it has opened (or an upgrader has heard about it)
   meetingHeadsUp: boolean; // macOS: say something 5 min before a calendar event (default off, asks for access when turned on)
 }
 
 export const DEFAULT_WATER: WaterSettings = { enabled: true, intervalMin: DEFAULT_INTERVAL, lastReminderAt: null, glasses: 0, glassesDate: '' };
 
-export const DEFAULTS: Settings = { quiet: false, scheduler: {}, position: null, hidden: false, style: DEFAULT_STYLE, water: DEFAULT_WATER, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, stretch: { enabled: true, everyMin: DEFAULT_STRETCH_MIN }, focus: null, meetingHeadsUp: false, outfits: DEFAULT_OUTFIT_SETTING, askProvider: DEFAULT_ASK_PROVIDER, askGroqModel: DEFAULT_GROQ_MODEL, askClaudeModel: DEFAULT_CLAUDE_MODEL, askModel: DEFAULT_ASK_MODEL, askIntroSeen: false, updates: DEFAULT_UPDATE_STATE };
+export const DEFAULTS: Settings = { quiet: false, scheduler: {}, position: null, hidden: false, style: DEFAULT_STYLE, water: DEFAULT_WATER, greetOnUnlock: true, hideWhenPresenting: true, reactToMusic: true, stretch: { enabled: true, everyMin: DEFAULT_STRETCH_MIN }, focus: null, meetingHeadsUp: false, outfits: DEFAULT_OUTFIT_SETTING, askProvider: DEFAULT_ASK_PROVIDER, askGroqModel: DEFAULT_GROQ_MODEL, askClaudeModel: DEFAULT_CLAUDE_MODEL, askModel: DEFAULT_ASK_MODEL, askIntroSeen: false, updates: DEFAULT_UPDATE_STATE, guideSeen: 0 };
 
 /** Validate raw persisted values (anything can be in the store file) into a Settings object. */
 export function parseSettings(raw: Record<string, unknown>): Settings {
@@ -76,7 +77,13 @@ export function parseSettings(raw: Record<string, unknown>): Settings {
     askModel: normalizeAskModel(raw.askModel),
     askIntroSeen: raw.askIntroSeen === true,
     updates: parseUpdateState(raw.updates),
+    guideSeen: typeof raw.guideSeen === 'number' && Number.isInteger(raw.guideSeen) && raw.guideSeen >= 0 ? raw.guideSeen : 0,
   };
+}
+
+/** A store nothing was ever written to: a first run (not an upgrade). */
+export function isFreshStore(raw: Record<string, unknown>): boolean {
+  return Object.values(raw).every((v) => v === undefined);
 }
 
 export function parseWater(raw: unknown): WaterSettings {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULTS, parseFocus, parseSettings, parseStretch, parseWater } from './settingsParse';
+import { DEFAULTS, isFreshStore, parseFocus, parseSettings, parseStretch, parseWater } from './settingsParse';
 import { normalizeStyle } from '../art/style';
 
 describe('style persistence', () => {
@@ -143,5 +143,20 @@ describe('ask settings', () => {
   });
   it('no API key field exists in settings (it lives in the keychain)', () => {
     expect(Object.keys(parseSettings({ apiKey: 'sk-ant-x', askKey: 'sk-ant-x' })).join(' ')).not.toMatch(/key/i);
+  });
+});
+
+describe('welcome guide settings', () => {
+  it('guideSeen defaults to 0 and keeps non-negative integers', () => {
+    expect(parseSettings({}).guideSeen).toBe(0);
+    expect(parseSettings({ guideSeen: 1 }).guideSeen).toBe(1);
+    expect(parseSettings({ guideSeen: -1 }).guideSeen).toBe(0);
+    expect(parseSettings({ guideSeen: 1.5 }).guideSeen).toBe(0);
+    expect(parseSettings({ guideSeen: 'x' }).guideSeen).toBe(0);
+  });
+  it('isFreshStore is true only when every loaded value is undefined', () => {
+    expect(isFreshStore({ quiet: undefined, style: undefined })).toBe(true);
+    expect(isFreshStore({ quiet: undefined, style: 'flat' })).toBe(false);
+    expect(isFreshStore({})).toBe(true);
   });
 });

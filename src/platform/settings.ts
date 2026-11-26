@@ -1,7 +1,7 @@
 import { load } from '@tauri-apps/plugin-store';
 import type { Store } from '@tauri-apps/plugin-store';
 import { availableMonitors, getCurrentWindow, PhysicalPosition, primaryMonitor } from '@tauri-apps/api/window';
-import { DEFAULTS, parseSettings } from './settingsParse';
+import { DEFAULTS, isFreshStore, parseSettings } from './settingsParse';
 import type { Settings } from './settingsParse';
 
 export type { Settings } from './settingsParse';
@@ -16,17 +16,24 @@ function getStore(): Promise<Store | null> {
   return storePromise;
 }
 
-export async function loadSettings(): Promise<Settings> {
+const KEYS = ['quiet', 'scheduler', 'position', 'hidden', 'style', 'water', 'greetOnUnlock', 'hideWhenPresenting', 'reactToMusic', 'stretch', 'focus', 'meetingHeadsUp', 'outfits', 'askProvider', 'askGroqModel', 'askClaudeModel', 'askModel', 'askIntroSeen', 'updates', 'guideSeen'];
+
+/** Settings plus whether the store was empty (first run). An unreadable store is never reported as fresh. */
+export async function loadSettingsWithMeta(): Promise<{ settings: Settings; fresh: boolean }> {
   try {
     const s = await getStore();
-    if (!s) return { ...DEFAULTS };
+    if (!s) return { settings: { ...DEFAULTS }, fresh: false };
     const raw: Record<string, unknown> = {};
-    for (const k of ['quiet', 'scheduler', 'position', 'hidden', 'style', 'water', 'greetOnUnlock', 'hideWhenPresenting', 'reactToMusic', 'stretch', 'focus', 'meetingHeadsUp', 'outfits', 'askProvider', 'askClaudeModel', 'askModel', 'askIntroSeen', 'updates']) raw[k] = await s.get(k);
-    return parseSettings(raw);
+    for (const k of KEYS) raw[k] = await s.get(k);
+    return { settings: parseSettings(raw), fresh: isFreshStore(raw) };
   } catch (e) {
     console.warn('loadSettings failed', e);
-    return { ...DEFAULTS };
+    return { settings: { ...DEFAULTS }, fresh: false };
   }
+}
+
+export async function loadSettings(): Promise<Settings> {
+  return (await loadSettingsWithMeta()).settings;
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<void> {
