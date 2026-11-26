@@ -77,7 +77,9 @@ describe('main menu', () => {
   });
 
   it('"Check for updates…" lives inside the Presence submenu, not as a new top-level row', () => {
-    expect(find(buildMenu(base), 'presence')?.children?.map((c) => c.id)).toEqual(['presence-hide', 'presence-music', 'update-check']);
+    expect(find(buildMenu(base), 'presence')?.children?.map((c) => c.id)).toEqual(['presence-hide', 'presence-music', 'update-check', 'guide-open']);
+    expect(find(buildMenu(base), 'guide-open')?.label).toBe('Welcome guide…');
+    expect(buildMenu(base)).toHaveLength(14);
     expect(find(buildMenu(base), 'update-check')?.label).toBe('Check for updates…');
   });
 

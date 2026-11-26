@@ -109,6 +109,8 @@ export interface AskDeps {
   /** Answers and/or acts on the question locally when it clearly asks for something he can do himself; null = ask the AI. Runs before the key check. */
   local?(question: string): Promise<LocalAnswer | null>;
   query(question: string, turns: Turn[]): Promise<AskResult>;
+  /** When the host has the welcome guide, a missing key is first offered a walkthrough there. */
+  openGuide?(start: 'key'): void;
   saveKey(key: string): Promise<boolean>;
   removeKey(): Promise<void>;
   /** Stores the chosen model id (already validated) for the active provider. */
@@ -260,6 +262,13 @@ export class AskFlow {
 
   private async enterKey(stale: () => boolean, confirm: boolean): Promise<boolean> {
     this.state = 'keyEntry';
+    if (!confirm && this.deps.openGuide) {
+      const offer = await this.deps.line('keyOffer');
+      const choice = await this.deps.choose(offer, [{ id: 'guide', label: 'Show me how' }, { id: 'paste', label: 'I have a key' }, { id: 'done', label: 'Not now' }]);
+      if (stale()) return false;
+      if (choice === 'guide') this.deps.openGuide('key');
+      if (choice !== 'paste') return false;
+    }
     const text = await this.deps.line('keyPrompt');
     // The key prompt already says that only typed text goes to the provider, so it counts as the first-run line too.
     if (!this.deps.introSeen()) this.deps.markIntroSeen();
