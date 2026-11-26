@@ -81,7 +81,7 @@ export class AskHistory {
   }
 }
 
-export type AskLine = 'intro' | 'prompt' | 'again' | 'keyPrompt' | 'keySaved' | 'keyRemoved' | 'keyFailed' | 'modelPrompt' | 'modelSaved' | 'modelInvalid';
+export type AskLine = 'intro' | 'prompt' | 'again' | 'keyPrompt' | 'keySaved' | 'keyRemoved' | 'keyFailed' | 'modelPrompt' | 'modelSaved' | 'modelInvalid' | 'keyOffer';
 
 /** An answer produced on this machine (see agent/intents.ts): shown like an AI answer, but with no network call and no key. */
 export interface LocalAnswer {

@@ -120,3 +120,15 @@ describe('content', () => {
     expect(greetings.filter((x) => x.period === 'morning').map((x) => x.text)).toContain(g.text);
   });
 });
+
+describe('welcome guide lines', () => {
+  it('guide lines exist, are balloon-sized and say {provider} where needed', async () => {
+    const c = new LocalContentProvider(() => 0);
+    for (const kind of ['askKeyOffer', 'firstRun', 'guideNews', 'guideBack', 'guideFailed'] as const) {
+      const { text } = await c.next(kind);
+      expect(text.length).toBeGreaterThan(0);
+      expect(text.length).toBeLessThanOrEqual(180);
+      if (kind === 'askKeyOffer') expect(text).toContain('{provider}');
+    }
+  });
+});

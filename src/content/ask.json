@@ -25,5 +25,7 @@
   {"kind": "modelSaved", "text": "Done! I'll use that model from now on."},
   {"kind": "modelSaved", "text": "Model switched. Ask away!"},
   {"kind": "modelInvalid", "text": "That doesn't look like a model id. It should be like {shape}."},
-  {"kind": "modelInvalid", "text": "Hmm, model ids look like {shape}. Try the menu again?"}
+  {"kind": "modelInvalid", "text": "Hmm, model ids look like {shape}. Try the menu again?"},
+  {"kind": "keyOffer", "text": "I need a {provider} key for that. Want me to show you how to get one?"},
+  {"kind": "keyOffer", "text": "That one needs a {provider} key. I can walk you through it."}
 ]

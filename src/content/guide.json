@@ -1,0 +1,7 @@
+[
+  {"kind": "firstRun", "text": "Hi! I'm Paperclip. Let me show you around."},
+  {"kind": "guideNews", "text": "New: a short guide. Right-click me, Presence, Welcome guide."},
+  {"kind": "guideBack", "text": "I'm back! Double right-click me whenever you want to ask something."},
+  {"kind": "guideBack", "text": "Home sweet corner."},
+  {"kind": "guideFailed", "text": "Hmm, my guide wouldn't open. You can try again from the menu: Presence, Welcome guide."}
+]
