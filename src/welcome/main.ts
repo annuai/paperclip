@@ -21,6 +21,8 @@ const SLIDE_MS = 175; // out, then the same again in
 async function boot(): Promise<void> {
   const q = new URLSearchParams(location.search);
   const platform = createPlatform(q);
+  // Told at once: the pet moves back in if it hears nothing, and a keychain question could take a while.
+  void platform.toMain('guide:ready');
   const root = document.documentElement;
   const style = normalizeStyle(q.get('style') ?? 'flat');
   root.dataset.style = style;
@@ -226,7 +228,6 @@ async function boot(): Promise<void> {
   });
 
   paint();
-  void platform.toMain('guide:ready');
   await stage.enter();
 }
 

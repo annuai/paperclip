@@ -9,6 +9,8 @@ import { HydrationScheduler } from './agent/hydration';
 import type { IntervalMin } from './agent/hydration';
 import { DEFAULT_SLEEP, SleepController } from './agent/sleep';
 import { Presence } from './agent/presence';
+import { returnPlan, routeCommand } from './agent/guest';
+import type { Guest } from './agent/guest';
 import { AskFlow, AskHistory, FREE_MODEL, GROQ_FAST_MODEL, GROQ_SMART_MODEL, PAID_HAIKU_MODEL, providerName } from './agent/ask';
 import { UpdateFlow } from './agent/updates';
 import { matchIntent } from './agent/intents';
@@ -30,8 +32,8 @@ import { dropLine } from './agent/fileDrop';
 import type { FilesDropped } from './platform/tauri';
 import { LocalContentProvider } from './content/provider';
 import type { ContentKind, ContentProvider } from './content/provider';
-import { loadSettings, locateWindow, restorePosition, saveSettings, savePosition, trackPosition, windowSize } from './platform/settings';
-import { askQuestion, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMenuPointer, onOutsidePress, setMenuTracking, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
+import { loadSettingsWithMeta, locateWindow, restorePosition, saveSettings, savePosition, trackPosition, windowSize } from './platform/settings';
+import { emitToGuide, guideOpen, onAskKeyChanged, onGuideMessage, onGuideState, askQuestion, askFocus, askKeyStatus, askRemoveKey, askSetKey, checkForUpdate, clearDropped, installUpdateAndRestart, onFileDrag, onFilesDropped, revealZip, zipDropped, calendarRequestAccess, calendarSetEnabled, calendarStatus, calendarSupported, getDebugHit, getSystem, onCursor, onMenuPointer, onOutsidePress, setMenuTracking, onMeetingEvents, onSessionUnlocked, onSystem, onTrayAction, pushHitRects, quitApp, setEyeFollow, syncTray, win } from './platform/tauri';
 import type { SystemInfo } from './platform/tauri';
 import { WelcomeBack, WelcomeLines } from './agent/welcomeBack';
 import { EyeFollow, EyeTracker, characterClick, computeTarget } from './agent/eyeFollow';
@@ -58,7 +60,9 @@ async function boot(): Promise<void> {
 
   document.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  const settings = await loadSettings();
+  const { settings, fresh } = await loadSettingsWithMeta();
+  let guideSeen = settings.guideSeen;
+  let pendingNews = false; // an upgrader who starts hidden hears about the guide the first time he is shown
   let quiet = settings.quiet;
   let greetOnUnlock = settings.greetOnUnlock;
   let hideWhenPresenting = settings.hideWhenPresenting;
@@ -468,6 +472,7 @@ async function boot(): Promise<void> {
     renderer.setStyle(s);
     void saveSettings({ style });
     sync();
+    if (guest !== 'none') void emitToGuide('guide:style', { style });
     requestAnimationFrame(() => {
       updateHit();
       if (balloon.visible) hit.set('balloon', rectOf(balloonEl));
@@ -507,6 +512,77 @@ async function boot(): Promise<void> {
     sleep.start();
     hydration.start();
     updateHit();
+    if (pendingNews) {
+      pendingNews = false;
+      void tellGuideNews();
+    }
+  };
+  const markGuideSeen = () => {
+    if (guideSeen !== 0) return;
+    guideSeen = 1;
+    void saveSettings({ guideSeen });
+  };
+  const tellGuideNews = async (): Promise<void> => {
+    markGuideSeen();
+    await speakKind('guideNews');
+  };
+
+  // ---- The welcome guide: he moves into that window, so there is only ever one of him (agent/guest.ts has the rules) ----
+  let guest: Guest = 'none';
+  let wasHidden = false; // hidden by the user before he moved out
+  let guideSavedKey = false;
+  let guideTimer: ReturnType<typeof setTimeout> | null = null;
+  const GUIDE_READY_MS = 5000;
+  const stopGuideTimer = () => {
+    if (guideTimer !== null) clearTimeout(guideTimer);
+    guideTimer = null;
+  };
+  const guideOptions = (start: 'hello' | 'key' | 'focus') => ({
+    style, provider: askProvider, start, outfit: currentOutfit(outfitSetting, new Date()),
+    models: { openrouter: askModel, groq: askGroqModel, claude: askClaudeModel },
+  });
+  const openGuide = async (start: 'hello' | 'key'): Promise<void> => {
+    if (guest === 'away') { await guideOpen(guideOptions('focus')); return; } // bring it forward, same screen
+    if (guest !== 'none') return;
+    guest = 'leaving';
+    wasHidden = agent.hidden && !presence.isAutoHidden();
+    guideSavedKey = false;
+    pendingNews = false;
+    markGuideSeen();
+    follow.end('hide');
+    menu.close();
+    ask.reset();
+    thrower.cancel();
+    sleep.reset();
+    sleep.stop();
+    hydration.stop();
+    scheduler.stop();
+    renderer.setSleeping(false);
+    agent.interrupt(true);
+    // Not a user hide: nothing is saved and Presence is not told.
+    await agent.hide(motionQuery.matches ? undefined : 'ExitRollUp');
+    sync(false);
+    guest = 'away';
+    guideTimer = setTimeout(() => void moveIn(true), GUIDE_READY_MS);
+    if (!(await guideOpen(guideOptions(start)))) await moveIn(true);
+  };
+  const moveIn = async (failed = false): Promise<void> => {
+    stopGuideTimer();
+    if (guest !== 'away') return;
+    guest = 'returning';
+    try {
+      const plan = returnPlan({ wasHidden, fullscreen: lastSnap?.fullscreen === true, hideWhenPresenting });
+      if (plan !== 'show') {
+        if (plan === 'adoptAutoHide') presence.adoptHidden();
+        sync(false);
+        return;
+      }
+      await showNow(true);
+      guest = 'none';
+      await speakKind(failed ? 'guideFailed' : guideSavedKey ? 'askKeySaved' : 'guideBack');
+    } finally {
+      if (guest === 'returning') guest = 'none';
+    }
   };
 
   // ---- Ask Paperclip: the conversation logic is agent/ask.ts; this only supplies the pieces it needs ----
@@ -536,6 +612,7 @@ async function boot(): Promise<void> {
     if (p === askProvider) { sync(); return; }
     askProvider = p;
     void saveSettings({ askProvider });
+    if (guest !== 'none') void emitToGuide('guide:provider', { provider: p });
     ask.reset();
     askKeySet = false;
     sync();
@@ -603,6 +680,7 @@ async function boot(): Promise<void> {
         return ok;
       },
       removeKey: async () => { await askRemoveKey(askProvider); askKeySet = false; sync(); },
+      openGuide: (start) => void openGuide(start),
       setModel: (id) => (askProvider === 'groq' ? setGroqModel(id) : setAskModel(id)),
       provider: () => askProvider,
       epoch: () => agent.epoch,
@@ -636,6 +714,7 @@ async function boot(): Promise<void> {
   });
   const runReactions = (reactions: Reaction[]): void => {
     for (const r of reactions) {
+      if ((r.type === 'hide' || r.type === 'show') && guest !== 'none') continue; // he is in the guide; moveIn decides
       if (r.type === 'hide') void hideNow(true);
       else if (r.type === 'show') void showNow(true);
       else {
@@ -664,6 +743,10 @@ async function boot(): Promise<void> {
 
   async function runCommand(id: string, checked?: boolean): Promise<void> {
     try {
+      if (routeCommand(guest, id) === 'focusGuide') {
+        await openGuide('hello');
+        return;
+      }
       const settingOnly = ['nap', 'tray-click', 'style-classic', 'style-flat', 'quit', 'hide', 'toggle', 'quiet', 'greet', 'meeting', 'focus-stop', 'stretch-enabled', 'style-outfits'].includes(id)
         || id.startsWith('water-') || id.startsWith('ask-model-') || id.startsWith('ask-groq-') || id.startsWith('presence-') || (id.startsWith('stretch-') && id !== 'stretch-now');
       if (sleep.sleeping && !settingOnly) await sleep.wake('command');
@@ -677,6 +760,9 @@ async function boot(): Promise<void> {
           void saveSettings({ outfits: outfitSetting });
           applyOutfit();
           sync();
+          return;
+        case 'guide-open':
+          await openGuide('hello');
           return;
         case 'ask-open':
         case 'ask-key':
@@ -966,7 +1052,22 @@ async function boot(): Promise<void> {
   hitTarget.addEventListener('mouseenter', () => sleep.hoverStart());
   hitTarget.addEventListener('mouseleave', () => sleep.hoverEnd());
 
-  void onTrayAction((a) => void runCommand(a.id, a.checked)).catch((e) => console.warn('tray listener failed', e));
+  void onTrayAction((a) => {
+    // The guide teaches the tray with the real icon.
+    if (guest === 'away') void emitToGuide('guide:tray', { id: a.id });
+    void runCommand(a.id, a.checked);
+  }).catch((e) => console.warn('tray listener failed', e));
+  void onGuideState((s) => { if (!s.open) void moveIn(); }).catch((e) => console.warn('guide state listener failed', e));
+  void onGuideMessage((m) => {
+    if (m.ev === 'guide:ready') stopGuideTimer();
+    else if (m.ev === 'guide:provider') setAskProvider(m.provider);
+    else if (m.ev === 'guide:style') setStyle(m.style);
+    else guideSavedKey = m.keySaved;
+  }).catch((e) => console.warn('guide listener failed', e));
+  void onAskKeyChanged(() => {
+    const p = askProvider;
+    void askKeyStatus(p).then((has) => { if (askProvider === p) { askKeySet = has; sync(); } });
+  }).catch((e) => console.warn('key listener failed', e));
 
   // Welcome back: say hello when the screen is unlocked (the Rust side reports how long he was locked).
   const welcomeBack = new WelcomeBack(
@@ -1091,17 +1192,25 @@ async function boot(): Promise<void> {
     // User left Paperclip hidden in the tray last time: start hidden, tray left-click summons him.
     await agent.hide();
     sync(false);
+    pendingNews = guideSeen === 0;
     startPresence();
     return;
   }
   void agent.show();
-  void agent.play('Greeting');
-  void speakKind('greeting');
+  const greeted = agent.play('Greeting');
   scheduler.start();
   sleep.start();
   hydration.start();
   sync(true);
   startPresence();
+  if (guideSeen !== 0) void speakKind('greeting');
+  else if (!fresh) void tellGuideNews(); // upgraders hear about the guide once
+  else {
+    // First run: say hello, then move into the guide.
+    await greeted;
+    await speakKind('firstRun');
+    await openGuide('hello');
+  }
 }
 
 void boot().catch((e) => console.warn('boot failed', e));
