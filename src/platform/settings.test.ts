@@ -3,15 +3,15 @@ import { DEFAULTS, isFreshStore, parseFocus, parseSettings, parseStretch, parseW
 import { normalizeStyle } from '../art/style';
 
 describe('style persistence', () => {
-  it('defaults to classic', () => {
-    expect(DEFAULTS.style).toBe('classic');
-    expect(parseSettings({}).style).toBe('classic');
+  it('defaults to flat', () => {
+    expect(DEFAULTS.style).toBe('flat');
+    expect(parseSettings({}).style).toBe('flat');
   });
   it('round-trips a saved style and rejects junk', () => {
     expect(parseSettings({ style: 'flat' }).style).toBe('flat');
     expect(parseSettings({ style: 'classic' }).style).toBe('classic');
-    expect(parseSettings({ style: 'neon' }).style).toBe('classic');
-    expect(normalizeStyle(42)).toBe('classic');
+    expect(parseSettings({ style: 'neon' }).style).toBe('flat');
+    expect(normalizeStyle(42)).toBe('flat');
   });
   it('keeps the other settings valid', () => {
     const s = parseSettings({ quiet: true, hidden: true, position: { x: 1, y: 2 }, style: 'flat' });

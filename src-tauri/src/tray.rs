@@ -81,8 +81,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         true,
         &[&ask_open, &ask_sep1, &ask_provider_openrouter, &ask_provider_groq, &ask_provider_anthropic, &ask_sep2, &ask_key, &ask_remove, &ask_sep3, &ask_free, &ask_haiku, &ask_other],
     )?;
-    let style_classic = CheckMenuItem::with_id(app, "style-classic", "Classic", true, true, None::<&str>)?;
-    let style_flat = CheckMenuItem::with_id(app, "style-flat", "Flat", true, false, None::<&str>)?;
+    let style_classic = CheckMenuItem::with_id(app, "style-classic", "Classic", true, false, None::<&str>)?;
+    let style_flat = CheckMenuItem::with_id(app, "style-flat", "Flat", true, true, None::<&str>)?;
     let style_outfits = CheckMenuItem::with_id(app, "style-outfits", "Seasonal outfits", true, true, None::<&str>)?;
     let style_sep = PredefinedMenuItem::separator(app)?;
     let style_menu = Submenu::with_items(app, "Style", true, &[&style_classic, &style_flat, &style_sep, &style_outfits])?;

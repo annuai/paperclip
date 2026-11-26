@@ -88,7 +88,7 @@ export async function syncTray(
   visible: boolean,
   quiet: boolean,
   asleep = false,
-  style = 'classic',
+  style = 'flat',
   water = { enabled: true, intervalMin: 45, glasses: 0 },
   greet = true,
   presence = { hidePresenting: true, music: true },
